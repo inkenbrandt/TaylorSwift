@@ -1,5 +1,5 @@
 """
-eccospectra — Eddy Covariance Cospectral Analysis
+TaylorSwift — Eddy Covariance Cospectral Analysis
 ==================================================
 
 A Python package for computing and analyzing (co)spectra from high-frequency
