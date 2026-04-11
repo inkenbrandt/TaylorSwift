@@ -1,8 +1,8 @@
-# eccospectra
+# TaylorSwift
 
 FFT-based (co)spectral analysis for eddy covariance time series.
 
-`eccospectra` implements the standard micrometeorological workflow for computing power spectra and cospectra from high-frequency sonic anemometer and open-path gas analyser data, following Kaimal et al. (1972) conventions.
+`TaylorSwift` implements the standard micrometeorological workflow for computing power spectra and cospectra from high-frequency sonic anemometer and open-path gas analyser data, following Kaimal et al. (1972) conventions.
 
 ## Features
 
