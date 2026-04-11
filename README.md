@@ -1,6 +1,6 @@
 # TaylorSwift
 
-FFT-based (co)spectral analysis for eddy covariance time series.
+The name is in honor of physicist Sir Geoffrey Ingram Taylor. FFT-based (co)spectral analysis for eddy covariance time series.
 
 `TaylorSwift` implements the standard micrometeorological workflow for computing power spectra and cospectra from high-frequency sonic anemometer and open-path gas analyser data, following Kaimal et al. (1972) conventions.
 
@@ -19,13 +19,13 @@ FFT-based (co)spectral analysis for eddy covariance time series.
 ## Installation
 
 ```bash
-pip install eccospectra
+pip install TaylorSwift
 ```
 
 For development:
 
 ```bash
-git clone https://github.com/paultgriffiths/eccospectra
+git clone https://github.com/inkenbrandt/TaylorSwift
 cd eccospectra
 pip install -e ".[dev]"
 ```
@@ -33,10 +33,10 @@ pip install -e ".[dev]"
 ## Quick start
 
 ```python
-import eccospectra as ec
+import TaylorSwift as tswift
 
 # --- Configure the site ---
-config = ec.SiteConfig(
+config = tswift.SiteConfig(
     z_measurement=3.0,    # measurement height [m]
     z_canopy=0.3,         # canopy height [m]
     sampling_freq=20.0,   # Hz
@@ -44,17 +44,17 @@ config = ec.SiteConfig(
 )
 
 # --- Load a raw TOA5 file ---
-df, meta = ec.read_toa5("path/to/TOA5_mysite.dat")
+df, meta = tswift.read_toa5("path/to/TOA5_mysite.dat")
 
 # --- Process all 30-min intervals ---
-results = ec.process_file(df, config)
+results = tswift.process_file(df, config)
 
 # --- Run quality control ---
-from eccospectra.qc import run_qc
+from tswift.qc import run_qc
 results = run_qc(results)
 
 # --- Plot ---
-from eccospectra.plotting import plot_cospectra
+from tswift.plotting import plot_cospectra
 fig = plot_cospectra(results)
 fig.savefig("cospectra.pdf")
 ```
@@ -64,10 +64,10 @@ fig.savefig("cospectra.pdf")
 ```
 TOA5 files
     │
-    ▼  ec.read_toa5() / ec.compile_toa5()
+    ▼  tswift.read_toa5() / tswift.compile_toa5()
 polars.DataFrame
     │
-    ▼  ec.process_file()
+    ▼  tswift.process_file()
     │   ├─ double rotation (mean v = w = 0)
     │   ├─ linear detrend
     │   ├─ batched FFT (6 signals)
