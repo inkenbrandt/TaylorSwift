@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import timedelta
 
+from .constants import K_VON_KARMAN, G0
+
 
 # ---------------------------------------------------------------------------
 # Site configuration
@@ -49,13 +51,6 @@ class SiteConfig:
     def z_eff(self) -> float:
         """Effective measurement height above displacement height."""
         return self.z_measurement - self.d
-
-
-# ---------------------------------------------------------------------------
-# Physical constants
-# ---------------------------------------------------------------------------
-KAPPA = 0.4       # von Kármán constant
-G = 9.81          # gravitational acceleration [m s-2]
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +407,7 @@ def process_interval(
     res.ustar = float((res.cov_wu**2 + np.nanmean(w_p * v_p)**2) ** 0.25)
 
     if abs(res.cov_wT) > 1e-10 and res.ustar > 0.01:
-        res.L = -(res.ustar ** 3 * T_K) / (KAPPA * G * res.cov_wT)
+        res.L = -(res.ustar ** 3 * T_K) / (K_VON_KARMAN * G0 * res.cov_wT)
     else:
         res.L = np.nan
 

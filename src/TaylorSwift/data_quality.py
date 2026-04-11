@@ -393,7 +393,7 @@ class OutlierDetection:
 
         .. math::
 
-            z_i = 0.6745\,\\frac{\,x_i - \\tilde{x}\,}{\\operatorname{MAD}},
+            z_i = 0.6745\\,\\frac{\\,x_i - \\tilde{x}\\,}{\\operatorname{MAD}},
 
         where :math:`\\tilde{x}` is the sample median and
 
@@ -590,7 +590,7 @@ def quality_filter(
     array([1.2, 3.4,  nan,  nan])
     """
 
-    filtered = data.copy()
+    filtered = np.array(data, dtype=np.float64)
     filtered[quality_flags > min_quality] = np.nan
     return filtered
 

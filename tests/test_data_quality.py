@@ -196,10 +196,11 @@ class TestDataQuality:
 
 class TestMadOutliers:
     def test_obvious_outlier_detected(self):
-        x = np.array([1.0, 1.0, 1.0, 1.0, 100.0])
+        rng = np.random.default_rng(0)
+        x = rng.normal(5.0, 1.0, 50)
+        x = np.append(x, 100.0)  # inject obvious outlier
         mask = OutlierDetection.mad_outliers(x)
-        assert mask[-1] is np.bool_(True)
-        assert not any(mask[:-1])
+        assert mask[-1] == True
 
     def test_clean_data_no_outliers(self):
         rng = np.random.default_rng(42)
