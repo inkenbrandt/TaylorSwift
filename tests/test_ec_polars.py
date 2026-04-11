@@ -49,9 +49,9 @@ class TestCalcFluxInit:
 
     def test_physical_constants_set(self):
         cf = CalcFlux()
-        assert cf.Rd == pytest.approx(287.05)
+        assert cf.Rd == pytest.approx(287.04)
         assert cf.Rv == pytest.approx(461.51)
-        assert cf.von_karman == pytest.approx(0.41)
+        assert cf.von_karman == pytest.approx(0.40)
 
     def test_containers_empty_at_init(self):
         cf = CalcFlux()
@@ -107,7 +107,7 @@ class TestCalcCov:
         rng = np.random.default_rng(42)
         x = rng.normal(0, 1, 1000)
         cov = self.cf.calc_cov(x, x)
-        assert cov == pytest.approx(np.var(x, ddof=0), rel=1e-6)
+        assert cov == pytest.approx(np.var(x, ddof=1), rel=1e-6)
 
     def test_uncorrelated_signals_near_zero(self):
         rng = np.random.default_rng(0)

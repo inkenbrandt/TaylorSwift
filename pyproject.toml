@@ -27,7 +27,6 @@ dependencies = [
     "pandas>=1.5",
     "KDEpy>=1.1",
     "matplotlib>=3.7",
-    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]
@@ -45,8 +44,11 @@ docs = [
 Repository = "https://github.com/paultgriffiths/eccospectra"
 Issues = "https://github.com/paultgriffiths/eccospectra/issues"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["eccospectra"]
+
+[tool.setuptools.package-dir]
+eccospectra = "src/TaylorSwift"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

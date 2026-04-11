@@ -57,9 +57,11 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Optional
 import polars as pl
-from KDEpy import FFTKDE
 import pandas as pd
+from KDEpy import FFTKDE
 from scipy.interpolate import interp1d
+
+from .constants import MOLAR_MASS, R_SPECIFIC, CP_DRY_AIR, T_ZERO_C
 
 
 # ===================================================================
@@ -488,17 +490,9 @@ def tf_linear_detrend(freq: np.ndarray, averaging_period: float) -> np.ndarray:
     tau = averaging_period * 60.0
     x = np.pi * freq * tau
     with np.errstate(divide='ignore', invalid='ignore'):
-        # Approximate form: similar to block average but with slower rolloff
         sinc = np.where(x > 1e-10, np.sin(x) / x, 1.0)
-        tf = np.where(
-            x > 1e-10,
-            1.0 - (3.0 / (2.0 * x**2)) * (1.0 - sinc**2 / (1.0 - sinc)**0
-                                            if False else
-                                            1.0 - np.sin(2*x)/(2*x)),
-            0.0
-        )
-        # Simpler robust form (Moncrieff et al., 2004):
-        tf = 1.0 - (sinc)**2
+        # Moncrieff et al. (2004) robust form
+        tf = 1.0 - sinc ** 2
     return np.clip(tf, 0.0, 1.0)
 
 
@@ -806,8 +800,6 @@ def compute_spectral_correction_factor(
                                    averaging_period, flux_type)
 
     # Integration in log-frequency space: ∫ Co d(ln f)
-    d_lnf = np.diff(np.log(f_nd))
-
     # Numerator: integral of true cospectrum
     num = np.trapz(Co_model, np.log(f_nd))
 
@@ -926,14 +918,13 @@ def wpl_correction(
         'mu'      : ratio of molecular weights (dry air / water)
         'sigma'   : ρv / ρd (mixing ratio by density)
     """
-    # Constants
-    Md = 28.97e-3    # molar mass dry air [kg/mol]
-    Mv = 18.02e-3    # molar mass water vapour [kg/mol]
-    mu = Md / Mv     # ≈ 1.608
-    Rd = 287.04      # specific gas constant dry air [J kg⁻¹ K⁻¹]
-    cp = 1004.67     # specific heat of dry air [J kg⁻¹ K⁻¹]
+    Md = MOLAR_MASS['air_dry']
+    Mv = MOLAR_MASS['h2o']
+    mu = Md / Mv
+    Rd = R_SPECIFIC['dry_air']
+    cp = CP_DRY_AIR
 
-    T_K = T_mean + 273.15
+    T_K = T_mean + T_ZERO_C
     P_Pa = P_mean * 1000.0  # kPa to Pa
 
     # Dry air density [kg m⁻³]

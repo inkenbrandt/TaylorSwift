@@ -2,35 +2,87 @@
 # Transcibed from original Visual Basic scripts by Clayton Lewis and Lawrence Hipps
 
 import polars as pl
-import pandas as pd  # optional compat
+import pandas as pd
 import numpy as np
 from scipy import signal
-import statsmodels.api as sm
+
+from .constants import (
+    K_VON_KARMAN,
+    G0,
+    R_GAS,
+    OMEGA,
+    SIGMA_SB,
+    CP_DRY_AIR,
+    MOLAR_MASS,
+    R_SPECIFIC,
+    T_ZERO_C,
+)
+
+# ---------------------------------------------------------------------------
+# Hardy (1998) ITS-90 polynomial coefficients for dew/frost point
+# ---------------------------------------------------------------------------
+_HARDY_C = (207.98233, -20.156028, 0.46778925, -9.2288067e-6)
+_HARDY_D = (1.0, -0.13319669, 0.0056577518, -7.5172865e-5)
+
+
+# ---------------------------------------------------------------------------
+# Polars/pandas compatibility helpers
+# ---------------------------------------------------------------------------
+
+def _to_pl_df(df):
+    """Convert a pandas or Polars DataFrame to a Polars DataFrame."""
+    if isinstance(df, pl.DataFrame):
+        return df
+    if isinstance(df, pd.DataFrame):
+        return pl.from_pandas(df)
+    raise TypeError(f"Expected DataFrame, got {type(df)}")
+
+
+def _to_same_type(original, pl_df):
+    """Convert *pl_df* back to the same type as *original*."""
+    if isinstance(original, pd.DataFrame):
+        return pl_df.to_pandas()
+    return pl_df
+
+
+def _get_series(df, col: str) -> pl.Series:
+    """Extract a column as a Polars Series regardless of input type."""
+    if isinstance(df, pd.DataFrame):
+        return pl.Series(col, df[col].values)
+    return df[col]
+
+
+def _assign(df, **kwargs):
+    """Assign new columns (numpy arrays) to a DataFrame of either type."""
+    if isinstance(df, pd.DataFrame):
+        return df.assign(**{k: v for k, v in kwargs.items()})
+    exprs = [pl.Series(k, v) for k, v in kwargs.items()]
+    return df.with_columns(exprs)
 
 
 class CalcFlux:
     # … class-level attributes & docstring remain unchanged …
 
     def __init__(self, **kwargs):
-        # ---- physical constants ------------------------------------------------
+        # ---- physical constants (from constants.py) ----------------------------
         self.Cp = None
-        self.Rv = 461.51  # Water-vapour gas constant (J kg⁻¹ K⁻¹)
-        self.Ru = 8.3143  # Universal gas constant (J mol⁻¹ K⁻¹)
-        self.Cpd = 1005.0  # Specific heat of dry air (J kg⁻¹ K⁻¹)
-        self.Rd = 287.05  # Dry-air gas constant (J kg⁻¹ K⁻¹)
-        self.md = 0.02896  # Dry-air molar mass (kg mol⁻¹)
+        self.Rv = R_SPECIFIC['water_vapor']
+        self.Ru = R_GAS
+        self.Cpd = CP_DRY_AIR
+        self.Rd = R_SPECIFIC['dry_air']
+        self.md = MOLAR_MASS['air_dry']
         self.Co = 0.21  # Atmospheric O₂ molar fraction
         self.Mo = 0.032  # O₂ molar mass (kg mol⁻¹)
 
         # ---- thermodynamic & spectral constants --------------------------------
         self.Cpw = 1952.0  # c_p of H₂O vapour (J kg⁻¹ K⁻¹)
         self.Cw = 4218.0  # c_p of liquid water (J kg⁻¹ K⁻¹)
-        self.epsilon = 18.016 / 28.97
-        self.g = 9.81  # Acceleration due to gravity (m s⁻²)
-        self.von_karman = 0.41  # von Kármán constant
-        self.MU_WPL = 28.97 / 18.016
-        self.Omega = 7.292e-5  # Earth’s angular velocity (rad s⁻¹)
-        self.Sigma_SB = 5.6718e-8  # Stefan–Boltzmann constant (J K⁻⁴ m⁻² s⁻¹)
+        self.epsilon = MOLAR_MASS['h2o'] / MOLAR_MASS['air_dry']
+        self.g = G0
+        self.von_karman = K_VON_KARMAN
+        self.MU_WPL = MOLAR_MASS['air_dry'] / MOLAR_MASS['h2o']
+        self.Omega = OMEGA
+        self.Sigma_SB = SIGMA_SB
 
         # ---- instrument configuration ------------------------------------------
         self.meter_type = "IRGASON"  # {'IRGASON', 'KH20'} supported
@@ -72,6 +124,10 @@ class CalcFlux:
 
         # ---- allow user overrides via kwargs ------------------------------------
         self.__dict__.update(kwargs)
+
+    # -----------------------------------------------------------------
+    # Wind direction & coordinate rotation
+    # -----------------------------------------------------------------
 
     def determine_wind_dir(
         self,
@@ -118,6 +174,96 @@ class CalcFlux:
             )
             return self.pathlen, self.wind_compass
 
+    def coord_rotation(
+        self,
+        df: pd.DataFrame | None = None,
+        Ux: str = "Ux",
+        Uy: str = "Uy",
+        Uz: str = "Uz",
+    ):
+        """
+        Perform double coordinate rotation that aligns the sonic-anemometer
+        axes with the mean wind direction and sets the mean vertical velocity
+        to zero, following Tanner & Thurtell (1969) and Kaimal & Finnigan (1994).
+        """
+        if df is None:
+            df = self.df
+
+        xmean = df[Ux].mean()
+        ymean = df[Uy].mean()
+        zmean = df[Uz].mean()
+        Uxy = np.sqrt(xmean**2 + ymean**2)
+        Uxyz = np.sqrt(xmean**2 + ymean**2 + zmean**2)
+
+        # save for later use
+        self.cosv = xmean / Uxy
+        self.sinv = ymean / Uxy
+        self.sinTheta = zmean / Uxyz
+        self.cosTheta = Uxy / Uxyz
+
+        return self.cosv, self.sinv, self.sinTheta, self.cosTheta, Uxy, Uxyz
+
+    def rotate_velocity_values(
+        self,
+        df: pd.DataFrame | None = None,
+        Ux: str = "Ux",
+        Uy: str = "Uy",
+        Uz: str = "Uz",
+    ) -> pd.DataFrame:
+        """
+        Apply the double-rotation matrix (yaw + pitch) from
+        :meth:`coord_rotation` to every instantaneous wind sample.
+        """
+        if df is None:
+            df = self.df
+
+        if self.cosTheta is None:
+            print("Please run coord_rotation")
+        else:
+            df["Uxr"] = (
+                df[Ux] * self.cosTheta * self.cosv
+                + df[Uy] * self.cosTheta * self.sinv
+                + df[Uz] * self.sinTheta
+            )
+            df["Uyr"] = df[Uy] * self.cosv - df[Ux] * self.sinv
+            df["Uzr"] = (
+                df[Uz] * self.cosTheta
+                - df[Ux] * self.sinTheta * self.cosv
+                - df[Uy] * self.sinTheta * self.sinv
+            )
+
+            self.df = df
+            return df
+
+    def rotated_components_statistics(
+        self,
+        df: pd.DataFrame | None = None,
+        Ux: str = "Ux",
+        Uy: str = "Uy",
+        Uz: str = "Uz",
+    ):
+        """
+        Compute means and standard deviations of the rotated wind components.
+        """
+        if df is None:
+            df = self.df
+
+        # Means and standard deviations of rotated components
+        self.avgvals["Uxr"] = df["Uxr"].mean()
+        self.avgvals["Uyr"] = df["Uyr"].mean()
+        self.avgvals["Uzr"] = df["Uzr"].mean()
+        self.stdvals["Uxr"] = df["Uxr"].std()
+        self.stdvals["Uyr"] = df["Uyr"].std()
+        self.stdvals["Uzr"] = df["Uzr"].std()
+
+        # Auxiliary: mean wind speed along rotated x′ axis
+        self.avgvals["Uav"] = (
+            self.avgvals["Ux"] * self.cosTheta * self.cosv
+            + self.avgvals["Uy"] * self.cosTheta * self.sinv
+            + self.avgvals["Uz"] * self.sinTheta
+        )
+        return
+
     def covar_coord_rot_correction(
         self,
         cosν: float | None = None,
@@ -131,7 +277,6 @@ class CalcFlux:
             sinv = self.sinv
             sinTheta = self.sinTheta
 
-        #
         Uz_Ts = (
             self.covar["Uz-Tsa"] * cosTheta
             - self.covar["Ux-Tsa"] * sinTheta * cosν
@@ -182,33 +327,102 @@ class CalcFlux:
             self.covar["Ux-Uz"] ** 2 + self.covar["Uy-Uz"] ** 2
         )
 
+    # -----------------------------------------------------------------
+    # Signal processing
+    # -----------------------------------------------------------------
 
     def get_lag(self, x: np.ndarray, y: np.ndarray) -> int:
-        """
-        Compute the sample **lag** (in index units) that maximises the discrete
-        cross-correlation between two equally spaced signals.
-
-        """
+        """Compute the sample lag that maximises cross-correlation."""
         correlation = signal.correlate(x, y, mode="full")
         lags = signal.correlation_lags(x.size, y.size, mode="full")
         lag = lags[np.argmax(correlation)]
         return lag
 
+    def calc_max_covariance(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        lag: int = 10,
+    ):
+        """
+        Search a symmetric lag window for the maximum and minimum
+        covariance between two time-aligned series.
+        """
+        xy = {}
+
+        for i in range(0, lag + 1):
+            if i == 0:
+                xy[0] = np.round(np.cov(x, y)[0][1], 8)
+            else:
+                xy[i] = np.round(np.cov(x[i:], y[: -1 * i])[0][1], 8)
+                xy[-i] = np.round(np.cov(x[: -1 * i], x[i:])[0][1], 8)
+
+        keys = np.array(list(xy.keys()))
+        vals = np.array(list(xy.values()))
+
+        valmax, maxlagindex = self.findextreme(vals, ext="max")
+        maxlag = keys[maxlagindex]
+        maxcov = (maxlag, valmax)
+
+        valmin, minlagindex = self.findextreme(vals, ext="min")
+        minlag = keys[minlagindex]
+        mincov = (minlag, valmin)
+
+        absmax, abslagindex = self.findextreme(vals, ext="abs")
+        absmaxlag = keys[abslagindex]
+        abscov = (absmaxlag, absmax)
+
+        return maxcov, mincov, abscov, xy
+
+    def findextreme(self, vals, ext: str = "abs"):
+        """Locate an extreme value (absolute, minimum, or maximum) in a 1-D array."""
+        if ext == "abs":
+            vals = np.abs(vals)
+            bigval = np.nanmax(vals)
+        elif ext == "max":
+            bigval = np.nanmax(vals)
+        elif ext == "min":
+            bigval = np.nanmin(vals)
+        else:
+            vals = np.abs(vals)
+            bigval = np.nanmax(np.abs(vals))
+
+        lagindex = np.where(vals == bigval)[0][0]
+
+        return bigval, lagindex
+
+    # -----------------------------------------------------------------
+    # Statistics
+    # -----------------------------------------------------------------
+
+    def calc_cov(self, p1: np.ndarray, p2: np.ndarray) -> float:
+        """Compute covariance using the manually expanded formula."""
+        sumproduct = np.sum(p1 * p2)
+        return (sumproduct - (np.sum(p1) * np.sum(p2)) / len(p1)) / (len(p1) - 1)
+
+    def calc_MSE(self, y: np.ndarray) -> float:
+        """Compute the population variance (mean square error)."""
+        return np.mean((y - np.mean(y)) ** 2)
+
+    # -----------------------------------------------------------------
+    # Thermodynamics & conversions
+    # -----------------------------------------------------------------
+
+    def convert_KtoC(self, T: float | np.ndarray) -> float | np.ndarray:
+        """Convert temperature from kelvin to degrees Celsius."""
+        return T - T_ZERO_C
+
+    def convert_CtoK(self, T: float | np.ndarray) -> float | np.ndarray:
+        """Convert temperature from degrees Celsius to kelvin."""
+        return T + T_ZERO_C
+
     def calc_Td_dewpoint(self, E: float | np.ndarray) -> float | np.ndarray:
         """
-        Convert water-vapour *pressure* to **dew-point temperature** using the
+        Convert water-vapour pressure to dew-point temperature using the
         ITS-90 polynomial formulation of Hardy (1998).
         """
-        c0 = 207.98233
-        c1 = -20.156028
-        c2 = 0.46778925
-        c3 = -0.0000092288067
-
-        d0 = 1.0
-        d1 = -0.13319669
-        d2 = 0.0056577518
-        d3 = -0.000075172865
-
+        c0, c1, c2, c3 = _HARDY_C
+        d0, d1, d2, d3 = _HARDY_D
         lne = np.log(E)
         nom = c0 + c1 * lne + c2 * lne**2 + c3 * lne**3
         denom = d0 + d1 * lne + d2 * lne**2 + d3 * lne**3
@@ -216,58 +430,37 @@ class CalcFlux:
 
     def calc_Tf_frostpoint(self, E: float | np.ndarray) -> float | np.ndarray:
         """
-        Convert water-vapour *pressure* to **frost-point temperature** using the
+        Convert water-vapour pressure to frost-point temperature using the
         ITS-90 polynomial formulation of Hardy (1998).
-
         """
-        c0 = 207.98233
-        c1 = -20.156028
-        c2 = 0.46778925
-        c3 = -0.0000092288067
-
-        d0 = 1.0
-        d1 = -0.13319669
-        d2 = 0.0056577518
-        d3 = -0.000075172865
-
+        c0, c1, c2, _ = _HARDY_C  # frost-point omits the c3·ln³ term
+        d0, d1, d2, d3 = _HARDY_D
         lne = np.log(E)
-        nom = c0 + c1 * lne + c2 * lne**2  # note: no c3 ln³ term
+        nom = c0 + c1 * lne + c2 * lne**2
         denom = d0 + d1 * lne + d2 * lne**2 + d3 * lne**3
         return nom / denom
 
     def calc_E(
         self, pV: float | np.ndarray, T: float | np.ndarray
     ) -> float | np.ndarray:
-        """
-        Compute **actual vapour pressure** from water-vapour *density* and
-        absolute temperature via the ideal-gas law.
-        """
-        e = pV * T * self.Rv
-        return e
+        """Compute actual vapour pressure from water-vapour density and
+        absolute temperature via the ideal-gas law."""
+        return pV * T * self.Rv
 
     def calc_Q(
         self,
         P: float | np.ndarray,
         e: float | np.ndarray,
     ) -> float | np.ndarray:
-        """
-        Convert total air *pressure* and water‐vapour *partial pressure* to
-        **specific humidity** using the Bolton (1980) formulation.
-
-        Specific humidity *q* is defined as the ratio of water-vapour mass to
-        the total moist-air mass:
-        """
-
-        # molar mass of water vapor/ molar mass of dry air
+        """Convert total air pressure and vapour partial pressure to
+        specific humidity (Bolton 1980)."""
         gamma = 0.622
-        q = (gamma * e) / (P - 0.378 * e)
-        return q
+        return (gamma * e) / (P - 0.378 * e)
 
     def calc_tc_air_temp_sonic(self, Ts, pV, P):
         """
-        Convert **sonic (virtual) temperature** to true **air temperature**
-        following the Campbell Scientific *EasyFlux®* implementation
-        (adapted from Wallace & Hobbs, 2006).
+        Convert sonic (virtual) temperature to true air temperature
+        following the Campbell Scientific EasyFlux implementation.
         """
         pV = pV * 1000.0
         P_atm = 9.86923e-6 * P
@@ -291,71 +484,13 @@ class CalcFlux:
     def calc_Tsa(
         self, Ts: float | np.ndarray, q: float | np.ndarray
     ) -> float | np.ndarray:
-        """
-        Convert **sonic (virtual) temperature** to **air temperature** using
-        specific humidity, after Schotanus *et al.* (1983).
-        """
-        Tsa = Ts / (1 + 0.51 * q)
-        return Tsa
+        """Convert sonic (virtual) temperature to air temperature using
+        specific humidity (Schotanus et al. 1983)."""
+        return Ts / (1 + 0.51 * q)
 
-    def calc_L(
-        self,
-        Ust: float | np.ndarray,
-        Tsa: float | np.ndarray,
-        Uz_Ta: float | np.ndarray,
-    ) -> float | np.ndarray:
-        """
-        Compute the **Monin–Obukhov length** *L*, the fundamental length-scale
-        that characterises atmospheric surface-layer stability.
-
-        The formulation follows Monin–Obukhov similarity theory:
-        """
-        return (-1 * (Ust**3) * Tsa) / (self.g * self.von_karman * Uz_Ta)
-
-  
-    def calc_AlphX(
-        self, L: float | np.ndarray
-    ) -> tuple[float | np.ndarray, float | np.ndarray]:
-        """
-        Evaluate the empirical **α** and **X** stability-correction factors used
-        in Massman’s (2000, 2001) scalar attenuation model.
-
-        The coefficients depend on the sign and magnitude of the stability
-        parameter *ζ = z/L*, where *z* is the sensor height (*self.UHeight*)
-        and *L* is the Monin–Obukhov length provided via *L*.
-
-        """
-        if (self.UHeight / L) <= 0:
-            alph = 0.925
-            X = 0.085
-        else:
-            alph = 1
-            X = 2 - 1.915 / (1 + 0.5 * self.UHeight / L)
-        return alph, X
-
-    def tetens(
-        self,
-        t: float | np.ndarray,
-        a: float = 0.611,
-        b: float = 17.502,
-        c: float = 240.97,
-    ) -> float | np.ndarray:
-        """
-        Compute the **saturation vapour pressure** (*eₛ*) of water over a
-        flat surface using the Magnus–Tetens approximation (Wallace & Hobbs,
-        2006, Eq. 3-8).
-
-        """
-        return a * np.exp((b * t) / (t + c))
-
-    # @numba.jit(forceobj=True)
     def calc_Es(self, T: float | np.ndarray) -> float | np.ndarray:
-        """
-        Saturation vapour pressure over **liquid water** calculated from
-        temperature using Hardy’s (1998) ITS-90 polynomial adaptation of the
-        modified-Wexler equation.
-
-        """
+        """Saturation vapour pressure over liquid water using Hardy's (1998)
+        ITS-90 polynomial adaptation of the modified-Wexler equation."""
         g0 = -2836.5744
         g1 = -6028.076559
         g2 = 19.54263612
@@ -376,48 +511,53 @@ class CalcFlux:
             + g7 * np.log(T)
         )
 
-    def calc_cov(self, p1: np.ndarray, p2: np.ndarray) -> float:
-        """
-        Compute the **covariance** between two equally sized 1-D arrays using a
-        manually expanded formula suitable for straight-line (and optionally
-        JIT-compiled) execution.
+    def tetens(
+        self,
+        t: float | np.ndarray,
+        a: float = 0.611,
+        b: float = 17.502,
+        c: float = 240.97,
+    ) -> float | np.ndarray:
+        """Saturation vapour pressure using the Magnus-Tetens approximation."""
+        return a * np.exp((b * t) / (t + c))
 
-        """
-        sumproduct = np.sum(p1 * p2)
-        return (sumproduct - (np.sum(p1) * np.sum(p2)) / len(p1)) / (len(p1) - 1)
+    def calc_LnKh(self, mvolts: float | np.ndarray) -> float | np.ndarray:
+        """Compute ln(Kw) from KH-20 krypton hygrometer output millivolts."""
+        return self.XKwC1 + self.XKwC2 * mvolts
 
-    def calc_MSE(self, y: np.ndarray) -> float:
-        """
-        Compute the **mean square error** (MSE) of a one-dimensional array, i.e.
-        the population variance without Bessel’s correction.
+    # -----------------------------------------------------------------
+    # Stability & flux
+    # -----------------------------------------------------------------
 
-        """
-        return np.mean((y - np.mean(y)) ** 2)
+    def calc_L(
+        self,
+        Ust: float | np.ndarray,
+        Tsa: float | np.ndarray,
+        Uz_Ta: float | np.ndarray,
+    ) -> float | np.ndarray:
+        """Compute the Monin-Obukhov length."""
+        return (-1 * (Ust**3) * Tsa) / (self.g * self.von_karman * Uz_Ta)
 
-    def convert_KtoC(self, T: float | np.ndarray) -> float | np.ndarray:
-        """
-        Convert **temperature** from kelvin to degrees Celsius.
-        """
-        return T - 273.16
+    def calc_AlphX(
+        self, L: float | np.ndarray
+    ) -> tuple[float | np.ndarray, float | np.ndarray]:
+        """Evaluate Massman (2000, 2001) stability-correction factors α and X."""
+        if (self.UHeight / L) <= 0:
+            alph = 0.925
+            X = 0.085
+        else:
+            alph = 1
+            X = 2 - 1.915 / (1 + 0.5 * self.UHeight / L)
+        return alph, X
 
-    def convert_CtoK(self, T: float | np.ndarray) -> float | np.ndarray:
-        """
-        Convert **temperature** from degrees Celsius to kelvin.
-        """
-        return T + 273.16
+    # -----------------------------------------------------------------
+    # CSAT3A shadow correction
+    # -----------------------------------------------------------------
 
     def shadow_correction(self, Ux, Uy, Uz):
         """
-        Correct the three wind-velocity components for **flow distortion**
-        (“shadowing”) caused by the **CSAT3/CSAT3A sonic anemometer** support
-        struts, after Horst, Wilczak & Cook (2015).
-
-        The routine iteratively (4 passes)
-
-        1. Rotates (*u, v, w*) into the **transducer-path coordinate system**,
-        2. Applies angle-dependent *shadow factors* to each path velocity, and
-        3. Transforms the adjusted velocities back to the sonic coordinate
-           system.
+        Correct wind-velocity components for flow distortion caused by
+        CSAT3/CSAT3A support struts (Horst, Wilczak & Cook, 2015).
         """
         # Rotation matrix: instrument → transducer-path coordinates
         h = [
@@ -445,8 +585,7 @@ class CalcFlux:
             0.38490017945975047,
         ]
 
-        iteration = 0
-        while iteration < 4:
+        for _ in range(4):
             Uxh = h[0] * Ux + h[1] * Uy + h[2] * Uz
             Uyh = h[3] * Ux + h[4] * Uy + h[5] * Uz
             Uzh = h[6] * Ux + h[7] * Uy + h[8] * Uz
@@ -463,182 +602,18 @@ class CalcFlux:
             Uza = Uzh / (0.84 + 0.16 * np.sin(Theta3))
 
             # Transform back to sonic (instrument) frame
-            Uxc = hinv[0] * Uxa + hinv[1] * Uya + hinv[2] * Uza
-            Uyc = hinv[3] * Uxa + hinv[4] * Uya + hinv[5] * Uza
-            Uzc = hinv[6] * Uxa + hinv[7] * Uya + hinv[8] * Uza
+            Ux = hinv[0] * Uxa + hinv[1] * Uya + hinv[2] * Uza
+            Uy = hinv[3] * Uxa + hinv[4] * Uya + hinv[5] * Uza
+            Uz = hinv[6] * Uxa + hinv[7] * Uya + hinv[8] * Uza
 
-            Ux, Uy, Uz = Uxc, Uyc, Uzc
-            iteration += 1
+        return Ux, Uy, Uz
 
-        return Uxc, Uyc, Uzc
-
-    def calc_max_covariance(
-        self,
-        x: np.ndarray,
-        y: np.ndarray,
-        lag: int = 10,
-    ):
-        """
-        Search a symmetric *lag window* for the **maximum (and minimum)
-        covariance** between two time-aligned series and return summary
-        statistics together with the full lag–covariance map.
-
-        """
-        xy = {}
-
-        for i in range(0, lag + 1):
-            if i == 0:
-                xy[0] = np.round(np.cov(x, y)[0][1], 8)
-            else:
-                # covariance for positive lags
-                xy[i] = np.round(np.cov(x[i:], y[: -1 * i])[0][1], 8)
-                # covariance for negative lags
-                xy[-i] = np.round(np.cov(x[: -1 * i], x[i:])[0][1], 8)
-
-        # convert dictionary to arrays
-        keys = np.array(list(xy.keys()))
-        vals = np.array(list(xy.values()))
-
-        # get index and value for maximum positive covariance
-        valmax, maxlagindex = self.findextreme(vals, ext="max")
-        maxlag = keys[maxlagindex]
-        maxcov = (maxlag, valmax)
-
-        # get index and value for maximum negative covariance
-        valmin, minlagindex = self.findextreme(vals, ext="min")
-        minlag = keys[minlagindex]
-        mincov = (minlag, valmin)
-
-        # get index and value for maximum absolute covariance
-        absmax, abslagindex = self.findextreme(vals, ext="min")
-        absmaxlag = keys[abslagindex]
-        abscov = (absmaxlag, absmax)
-
-    def findextreme(self, vals, ext: str = "abs"):
-        """
-        Locate an **extreme value** (absolute, minimum, or maximum) in a
-        one-dimensional array and return the value together with its index.
-        """
-        if ext == "abs":
-            vals = np.abs(vals)
-            bigval = np.nanmax(vals)
-        elif ext == "max":
-            bigval = np.nanmax(vals)
-        elif ext == "min":
-            bigval = np.nanmin(vals)
-        else:
-            vals = np.abs(vals)
-            bigval = np.nanmax(np.abs(vals))
-
-        lagindex = np.where(vals == bigval)[0][0]
-
-        return bigval, lagindex
-
-    def coord_rotation(
-        self,
-        df: pd.DataFrame | None = None,
-        Ux: str = "Ux",
-        Uy: str = "Uy",
-        Uz: str = "Uz",
-    ):
-        """
-        Perform the **double (planar-fit) coordinate rotation** that aligns the
-        sonic-anemometer axes with the mean wind direction and sets the mean
-        vertical velocity to zero.
-
-        The routine follows the classical scheme of Tanner & Thurtell (1969)
-        and Hyson et al. (1977) as summarised in Kaimal & Finnigan (1994):
-        """
-        if df is None:
-            df = self.df
-        else:
-            pass
-
-        xmean = df[Ux].mean()
-        ymean = df[Uy].mean()
-        zmean = df[Uz].mean()
-        Uxy = np.sqrt(xmean**2 + ymean**2)
-        Uxyz = np.sqrt(xmean**2 + ymean**2 + zmean**2)
-
-        # save for later use
-        self.cosv = xmean / Uxy
-        self.sinv = ymean / Uxy
-        self.sinTheta = zmean / Uxyz
-        self.cosTheta = Uxy / Uxyz
-
-        return self.cosv, self.sinv, self.sinTheta, self.cosTheta, Uxy, Uxyz
-
-    def rotate_velocity_values(
-        self,
-        df: pd.DataFrame | None = None,
-        Ux: str = "Ux",
-        Uy: str = "Uy",
-        Uz: str = "Uz",
-    ) -> pd.DataFrame:
-        """
-        Apply the **double‐rotation matrix** (yaw + pitch) obtained from
-        :meth:`coord_rotation` to every instantaneous wind sample, producing
-        velocity components aligned with the mean flow.
-
-        """
-        if df is None:
-            df = self.df
-
-        if self.cosTheta is None:
-            print("Please run coord_rotation")
-        else:
-            df["Uxr"] = (
-                df[Ux] * self.cosTheta * self.cosv
-                + df[Uy] * self.cosTheta * self.sinv
-                + df[Uz] * self.sinTheta
-            )
-            df["Uyr"] = df[Uy] * self.cosv - df[Ux] * self.sinv
-            df["Uzr"] = (
-                df[Uz] * self.cosTheta
-                - df[Ux] * self.sinTheta * self.cosv
-                - df[Uy] * self.sinTheta * self.sinv
-            )
-
-            self.df = df
-            return df
-
-    def rotated_components_statistics(
-        self,
-        df: pd.DataFrame | None = None,
-        Ux: str = "Ux",
-        Uy: str = "Uy",
-        Uz: str = "Uz",
-    ):
-        """
-        Compute **means** and **standard deviations** of the *rotated* wind
-        components and store them in the instance dictionaries
-        ``self.avgvals`` and ``self.stdvals``.
-        """
-        if df is None:
-            df = self.df
-
-        # Means and standard deviations of rotated components
-        self.avgvals["Uxr"] = df["Uxr"].mean()
-        self.avgvals["Uyr"] = df["Uyr"].mean()
-        self.avgvals["Uzr"] = df["Uzr"].mean()
-        self.stdvals["Uxr"] = df["Uxr"].std()
-        self.stdvals["Uyr"] = df["Uyr"].std()
-        self.stdvals["Uzr"] = df["Uzr"].std()
-
-        # Auxiliary: mean wind speed along rotated x′ axis (should ≈ Uxr mean)
-        self.avgvals["Uav"] = (
-            self.avgvals["Ux"] * self.cosTheta * self.cosv
-            + self.avgvals["Uy"] * self.cosTheta * self.sinv
-            + self.avgvals["Uz"] * self.sinTheta
-        )
-        return
+    # -----------------------------------------------------------------
+    # Utilities
+    # -----------------------------------------------------------------
 
     def dayfrac(self, df: pd.DataFrame) -> float:
-        """
-        Return the **fraction of a day** represented by the time span between
-        the first and last **valid** index entries of *df*.
-
-        """
+        """Return the fraction of a day represented by the DataFrame's time span."""
         return (df.last_valid_index() - df.first_valid_index()) / pd.to_timedelta(
             1, unit="D"
         )

@@ -19,35 +19,9 @@ Moraes, O.L.L. et al. (2008). Physica A, 387, 4927–4939.
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from matplotlib.ticker import LogLocator, NullFormatter
 
-
-# ---------------------------------------------------------------------------
-# Kaimal (1972) model cospectra  (empirical fits for neutral conditions)
-# ---------------------------------------------------------------------------
-def _kaimal_cospec_wT(f):
-    """Kaimal et al. (1972) model for n·Co_wT / <w'T'> vs f = nz/U."""
-    # Eq from Kaimal et al. (1972) for near-neutral:
-    # n Co_wT / <w'T'> = 12.92 f / (1 + 26.7 f)^(7/4)
-    return 12.92 * f / (1.0 + 26.7 * f) ** (7.0 / 4.0)
-
-
-def _kaimal_cospec_wu(f):
-    """Kaimal et al. (1972) model for n·Co_wu / <w'u'> vs f = nz/U."""
-    # n Co_wu / <w'u'> = 9.6 f / (1 + 14.0 f)^(7/4)
-    # (approximation from Horst, 1997 / Massman, 2000)
-    return 9.6 * f / (1.0 + 14.0 * f) ** (7.0 / 4.0)
-
-
-def _kaimal_spec_w(f):
-    """Kaimal (1972) model for n·S_w / u*² vs f = nz/U (neutral)."""
-    return 2.1 * f / (1.0 + 5.3 * f ** (5.0 / 3.0))
-
-
-def _kaimal_spec_u(f):
-    """Kaimal (1972) model for n·S_u / u*² vs f = nz/U (neutral)."""
-    return 105.0 * f / (1.0 + 33.0 * f) ** (5.0 / 3.0)
+from .corrections import _kaimal_cospec_model
 
 
 # ---------------------------------------------------------------------------
@@ -125,16 +99,16 @@ def plot_cospectra(
 
     panels = [
         (ax_wT,   'ncosp_wT',   "$n \\cdot Co_{wT} \\,/\\, \\overline{w'T'}$",
-         "Sensible heat flux cospectrum", _kaimal_cospec_wT),
+         "Sensible heat flux cospectrum", 'wT'),
         (ax_wu,   'ncosp_wu',   "$n \\cdot Co_{wu} \\,/\\, \\overline{w'u'}$",
-         "Momentum flux cospectrum", _kaimal_cospec_wu),
+         "Momentum flux cospectrum", 'wu'),
         (ax_wCO2, 'ncosp_wCO2', "$n \\cdot Co_{wCO_2} \\,/\\, \\overline{w'CO_2'}$",
          "CO$_2$ flux cospectrum", None),
         (ax_wH2O, 'ncosp_wH2O', "$n \\cdot Co_{wH_2O} \\,/\\, \\overline{w'H_2O'}$",
          "H$_2$O flux cospectrum", None),
     ]
 
-    for ax, attr, ylabel, title, model_fn in panels:
+    for ax, attr, ylabel, title, flux_type in panels:
         _setup_spectral_axes(ax, ylabel=ylabel, title=title)
 
         for res in results:
@@ -153,10 +127,10 @@ def plot_cospectra(
             color = cmap(norm(np.clip(zL, -2, 2)))
             ax.plot(f_nd, cosp, color=color, alpha=0.35, lw=0.7)
 
-        if show_model and model_fn is not None:
+        if show_model and flux_type is not None:
             f_model = np.logspace(-3, 2, 500)
-            ax.plot(f_model, model_fn(f_model), 'k-', lw=2.0, alpha=0.8,
-                    label='Kaimal (1972)')
+            ax.plot(f_model, _kaimal_cospec_model(f_model, flux_type),
+                    'k-', lw=2.0, alpha=0.8, label='Kaimal (1972)')
             ax.legend(fontsize=9, loc='upper right')
 
         if show_slope:
