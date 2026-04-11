@@ -261,3 +261,254 @@ Batch QC on a list of `SpectralResult` objects. Adds to each `qc_flags`:
 ### `plot_summary_timeseries(results)`
 
 Time series of key turbulence parameters for quick QC inspection.
+
+---
+
+## eccospectra.constants
+
+Physical constants, surface-type enumerations, default thresholds, and roughness helper
+functions for eddy covariance calculations.
+
+### Physical constants
+
+| Name | Value | Units |
+|---|---|---|
+| `K_VON_KARMAN` | 0.40 | dimensionless |
+| `G0` | 9.80665 | m s⁻² |
+| `R_GAS` | 8.3144598 | J mol⁻¹ K⁻¹ |
+| `SIGMA_SB` | 5.67×10⁻⁸ | W m⁻² K⁻⁴ |
+| `CP_DRY_AIR` | 1004.67 | J kg⁻¹ K⁻¹ |
+| `L_VAPORIZATION` | 2.501×10⁶ | J kg⁻¹ |
+| `T_ZERO_C` | 273.15 | K |
+| `P_REFERENCE` | 101.325 | kPa |
+
+Dictionaries: `MOLAR_MASS`, `R_SPECIFIC`, `UNIT_CONVERSION`
+
+---
+
+### `SurfaceType` (IntEnum)
+
+Surface roughness class for roughness / displacement height calculations.
+
+Members: `CROP`, `GRASS`, `SHRUB`, `FOREST`, `BARELAND`, `WATER`, `ICE`, `URBAN`
+
+Lookup tables keyed by `SurfaceType`: `ROUGHNESS_LENGTH`, `DISPLACEMENT_RATIO`
+
+---
+
+### `Hemisphere` (IntEnum)
+
+`NORTH = 1`, `SOUTH = -1`, `EAST = 1`, `WEST = -1`
+
+---
+
+### `QualityThreshold`
+
+Class-level dicts for default QC thresholds.
+
+| Attribute | Description |
+|---|---|
+| `RN_THRESHOLD` | Stationarity thresholds (`high_quality`, `moderate_quality`, `low_quality`) |
+| `ITC_THRESHOLD` | ITC thresholds |
+| `WIND_DIRECTION` | Acceptable wind direction sectors (degrees) |
+| `SIGNAL_STRENGTH` | Minimum signal strength for CO₂ and H₂O |
+| `VALID_RANGE` | Physical plausibility ranges for each variable |
+
+---
+
+### `ProcessingConfig`
+
+Default configuration for flux processing.
+
+| Attribute | Description |
+|---|---|
+| `AVERAGING_INTERVAL` | 1800 s |
+| `SUBINTERVAL` | 300 s |
+| `FREQ_RESPONSE` | Low/high frequency cutoffs and number of frequency points |
+| `DESPIKE` | Z-score threshold and window size for despiking |
+| `ROTATION` | Max rotation angle, number of sectors for planar fit |
+| `STORAGE` | Storage flux integration parameters |
+| `DENSITY_CORRECTION` | WPL and density-correction flags |
+
+---
+
+### `ErrorCode` (IntEnum)
+
+`SUCCESS`, `MISSING_DATA`, `RANGE_ERROR`, `QUALITY_ERROR`, `PROCESSING_ERROR`, `CONFIG_ERROR`
+
+---
+
+### `get_displacement_height(surface_type, canopy_height)`
+
+Estimate displacement height *d = k_d × h* from the surface type and canopy height.
+
+**Raises** `ValueError` if `canopy_height < 0`.
+
+---
+
+### `get_roughness_length(surface_type, canopy_height, custom_value=None)`
+
+Return aerodynamic roughness length *z₀*.  For `CROP`, `GRASS`, and `SHRUB` uses
+`0.15 × h`; all other types look up `ROUGHNESS_LENGTH`.  Pass `custom_value` to
+bypass table/empirical estimates.
+
+**Raises** `ValueError` if `canopy_height < 0`.
+
+---
+
+## eccospectra.data_quality
+
+Data quality assessment following Foken *et al.* (2004, 2012).
+
+### `QualityFlag` (IntEnum)
+
+Nine-class Foken quality scheme: `CLASS_1` (highest) … `CLASS_9` (discard).
+
+---
+
+### `StabilityParameters`
+
+Dataclass holding surface-layer stability variables for a 30-min averaging period.
+
+| Field | Description | Units |
+|---|---|---|
+| `z` | Measurement height above displacement plane | m |
+| `L` | Monin–Obukhov length | m |
+| `u_star` | Friction velocity | m s⁻¹ |
+| `sigma_w` | Std. dev. vertical wind | m s⁻¹ |
+| `sigma_T` | Std. dev. air temperature | K |
+| `T_star` | Temperature scale −w′T′/u★ | K |
+| `latitude` | Site latitude | ° |
+
+---
+
+### `StationarityTest`
+
+Dataclass of relative non-stationarity indices (Foken & Wichura 1996).
+
+Fields: `RN_uw`, `RN_wT`, `RN_wq`, `RN_wc` (all dimensionless).
+
+---
+
+### `DataQuality`
+
+```python
+DataQuality(use_wind_direction=True)
+```
+
+| Method | Description |
+|---|---|
+| `assess_data_quality(stability, stationarity, wind_direction=None, flux_type='momentum')` | Comprehensive QC — returns dict with `overall_flag`, `stationarity_flag`, `itc_flag`, `wind_dir_flag`, `itc_measured`, `itc_modeled` |
+| `get_quality_label(flag)` | Human-readable string for a numeric quality flag |
+
+`flux_type` is one of `'momentum'`, `'heat'`, `'moisture'`, `'co2'`.
+
+---
+
+### `OutlierDetection`
+
+Static methods for spike/outlier detection.
+
+| Method | Description |
+|---|---|
+| `mad_outliers(data, threshold=3.5)` | Median Absolute Deviation modified Z-score; returns bool mask |
+| `spike_detection(data, window_size=100, z_threshold=4.0)` | Sliding-window local z-score spike flagging; returns bool mask |
+
+---
+
+### `quality_filter(data, quality_flags, min_quality=3)`
+
+Replace elements of `data` with `NaN` where `quality_flags > min_quality`.
+
+**Returns** `np.ndarray` (float).
+
+---
+
+### `rolling_sigma_filter(df, value_col='Uz', time_col='TIMESTAMP', period='5s', sigma=3.0, ...)`
+
+Rolling ±σ·std spike filter on a time-indexed Polars DataFrame.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `value_col` | `'Uz'` | Column to filter |
+| `time_col` | `'TIMESTAMP'` | Datetime column for rolling index |
+| `period` | `'5s'` | Time window (e.g. `'5s'`, `'30m'`) |
+| `sigma` | `3.0` | Standard deviation threshold |
+| `closed` | `'both'` | Window boundary inclusion |
+| `output_col` | `None` | Output column name (default: `{value_col}_filtered`) |
+| `keep_stats` | `True` | Keep or drop intermediate mean/std columns |
+| `ensure_datetime` | `True` | Cast `time_col` to `pl.Datetime` |
+
+**Returns** `pl.DataFrame` with added columns `{value_col}_roll_mean`, `{value_col}_roll_std`, and `{output_col}`.
+
+---
+
+## eccospectra.ec_polars
+
+High-frequency eddy covariance flux processing pipeline with Polars/pandas
+compatibility.  Transcribed from original Fortran/Visual Basic scripts by
+Lawrence Hipps and Clayton Lewis (Utah State University).
+
+### `CalcFlux`
+
+```python
+CalcFlux(**kwargs)
+```
+
+The primary class for computing sensible heat, latent heat, and momentum
+fluxes from high-frequency sonic anemometer and gas analyser data.
+All attributes have sensible defaults and may be overridden via `**kwargs`.
+
+**Key configuration attributes**
+
+| Attribute | Default | Description |
+|---|---|---|
+| `meter_type` | `'IRGASON'` | `'IRGASON'` or `'KH20'` |
+| `UHeight` | 3.52 | Sonic measurement height (m) |
+| `sonic_dir` | 225.0 | Sonic azimuth from true north (°) |
+| `PathDist_U` | 0.0 | Sonic–hygrometer horizontal separation (m) |
+| `lag` | 10 | Lag window (±samples) for covariance maximisation |
+| `Rd`, `Rv`, `Cpd` | 287.05, 461.51, 1005.0 | Gas constants and heat capacities |
+
+**Main processing methods**
+
+| Method | Description |
+|---|---|
+| `runall(df)` | Full EC pipeline for KH-20 hygrometer data; returns `pd.Series` with 13 flux/diagnostic fields |
+| `run_irga(df)` | Full EC pipeline for IRGASON/open-path IRGA data; returns `pd.Series` |
+
+Both methods expect a time-indexed pandas `DataFrame` with columns
+`Ux`, `Uy`, `Uz`, `Ts`, `Ta`, `Pr` (and `Ea`/`pV` as appropriate);
+column names are harmonised by `renamedf`.
+
+**Despiking methods**
+
+| Method | Description |
+|---|---|
+| `despike_quart_filter(col, win=600, ...)` | Rolling inter-quantile range filter (default pipeline) |
+| `despike_med_mod(col, win=800, ...)` | Median-filter + RLM robust regression spike removal |
+| `despike_ewma_fb(col, span, delta)` | Forward–backward EWMA outlier removal |
+
+**Pure utility methods**
+
+| Method | Description |
+|---|---|
+| `convert_CtoK(T)` / `convert_KtoC(T)` | Temperature unit conversion |
+| `calc_cov(p1, p2)` | Population covariance of two arrays |
+| `calc_MSE(y)` | Mean squared deviation from mean |
+| `calc_Es(T)` | Saturation vapour pressure (Pa) from temperature (K) |
+| `tetens(T)` | Saturation vapour pressure (kPa) from air temperature (°C) |
+| `calc_Td_dewpoint(E)` | Dew-point temperature (K) |
+| `shadow_correction(Ux, Uy, Uz)` | CSAT3 transducer shadow correction |
+| `coord_rotation(df)` | Double/triple wind-vector rotation |
+| `calc_L(Ustr, Tsa, Uz_Ta)` | Monin–Obukhov length |
+| `get_lag(x, y)` | Optimal lag between two signals |
+
+**Polars/pandas compatibility helpers** (module-level)
+
+| Helper | Description |
+|---|---|
+| `_to_pl_df(df)` | Convert pandas or Polars DataFrame to `pl.DataFrame` |
+| `_to_same_type(original, pl_df)` | Return result as the same type as `original` |
+| `_get_series(df, col)` | Extract a column as `pl.Series` from either DataFrame type |
+| `_assign(df, **cols)` | Add/replace columns in either DataFrame type |
