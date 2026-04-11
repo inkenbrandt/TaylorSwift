@@ -18,6 +18,12 @@ corrections – Pre-processing despiking (UKDE, Metzger et al. 2012),
 plotting    – Publication-quality Kaimal-style spectral plots.
 qc          – Quality-control helpers: inertial-subrange slope fitting,
               stationarity tests, and diagnostic flags.
+constants   – Physical constants, surface-type enumerations, and default
+              configuration for eddy covariance calculations.
+data_quality – Foken et al. (2004) quality flags, stationarity and ITC
+              tests, outlier detection, and rolling sigma filtering.
+ec_polars   – High-frequency flux processing pipeline (CalcFlux) with
+              Polars/pandas compatibility and multiple despiking methods.
 """
 
 from .core import (
@@ -41,5 +47,23 @@ from .corrections import (
 )
 from .plotting import plot_cospectra, plot_spectra, plot_ogive
 from .qc import fit_inertial_slope, stationarity_test
+from .constants import (
+    SurfaceType,
+    Hemisphere,
+    QualityThreshold,
+    ProcessingConfig,
+    get_displacement_height,
+    get_roughness_length,
+)
+from .data_quality import (
+    QualityFlag,
+    StabilityParameters,
+    StationarityTest,
+    DataQuality,
+    OutlierDetection,
+    quality_filter,
+    rolling_sigma_filter,
+)
+from .ec_polars import CalcFlux
 
 __version__ = "0.2.0"
