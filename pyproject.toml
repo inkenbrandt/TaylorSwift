@@ -27,6 +27,7 @@ dependencies = [
     "pandas>=1.5",
     "KDEpy>=1.1",
     "matplotlib>=3.7",
+    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]
