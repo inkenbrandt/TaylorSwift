@@ -19,7 +19,7 @@ Moraes, O.L.L. et al. (2008). Physica A, 387, 4927–4939.
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import LogLocator, NullFormatter
+from matplotlib.ticker import LogLocator
 
 from .corrections import _kaimal_cospec_model
 
