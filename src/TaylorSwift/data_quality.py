@@ -12,6 +12,8 @@ References:
     Foken et al. (2012) Eddy Covariance: A Practical Guide
 """
 
+from __future__ import annotations
+
 from typing import Tuple, Optional, Union, Dict
 import numpy as np
 from dataclasses import dataclass

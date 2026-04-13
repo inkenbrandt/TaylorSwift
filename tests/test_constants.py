@@ -4,7 +4,6 @@ quality thresholds, and roughness helper functions.
 """
 
 import pytest
-import numpy as np
 
 from eccospectra.constants import (
     K_VON_KARMAN,

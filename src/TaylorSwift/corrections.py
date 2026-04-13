@@ -55,7 +55,6 @@ Metzger, S., Junkermann, W., Mauder, M., Beyrich, F., Butterbach-Bahl, K.,
 
 import numpy as np
 from dataclasses import dataclass
-from typing import Optional
 import polars as pl
 import pandas as pd
 from KDEpy import FFTKDE

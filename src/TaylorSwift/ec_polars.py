@@ -1,6 +1,8 @@
 # Original scripts in Fortran by Lawrence Hipps USU
 # Transcibed from original Visual Basic scripts by Clayton Lewis and Lawrence Hipps
 
+from __future__ import annotations
+
 import polars as pl
 import pandas as pd
 import numpy as np
