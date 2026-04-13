@@ -140,7 +140,6 @@ def rotate_wind(u_raw: np.ndarray, v_raw: np.ndarray, w_raw: np.ndarray):
 
     u_bar = np.nanmean(u)
     v_bar = np.nanmean(v)
-    w_bar = np.nanmean(w)
 
     # First rotation: align u with horizontal wind vector
     alpha = np.arctan2(v_bar, u_bar)
@@ -204,7 +203,6 @@ def compute_cospectrum(x: np.ndarray, y: np.ndarray, fs: float):
     # Apply Hamming window to reduce spectral leakage
     window = np.hamming(N)
     # Window correction factor for energy preservation
-    S1 = np.sum(window)
     S2 = np.sum(window ** 2)
 
     xw = x * window

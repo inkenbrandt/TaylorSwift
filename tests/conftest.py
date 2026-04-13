@@ -4,7 +4,7 @@ Shared pytest fixtures for eccospectra tests.
 
 import numpy as np
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from eccospectra import SiteConfig
 from eccospectra.core import SpectralResult
@@ -67,7 +67,6 @@ def short_white_noise():
 def full_interval_arrays():
     """Full 30-min synthetic arrays with realistic turbulence structure."""
     n = N_30MIN
-    t = np.arange(n) / FS
 
     # Mean flow + turbulent fluctuations
     u = 5.0 + RNG.normal(0.0, 0.5, n)

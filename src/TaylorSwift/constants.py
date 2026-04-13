@@ -9,9 +9,7 @@ This module provides:
 5. Quality control thresholds
 """
 
-import numpy as np
 from enum import IntEnum
-from typing import Dict, Tuple
 
 # Physical constants
 K_VON_KARMAN = 0.40  # von Karman constant (dimensionless)
@@ -222,7 +220,7 @@ def get_displacement_height(
     surface_type: SurfaceType,
     canopy_height: float,
 ) -> float:
-    """
+    r"""
     Estimate the zero-plane displacement height *d* for a vegetated or
     rough surface.
 
@@ -297,7 +295,7 @@ def get_roughness_length(
     canopy_height: float,
     custom_value: float | None = None,
 ) -> float:
-    """
+    r"""
     Retrieve or estimate the aerodynamic roughness length :math:`z_{0}`.
 
     The roughness length is the theoretical height at which the mean
