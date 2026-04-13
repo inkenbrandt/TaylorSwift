@@ -21,7 +21,6 @@ Vickers, D. & Mahrt, L. (1997). Quality control analysis of flux data.
 """
 
 import numpy as np
-from .core import SpectralResult
 
 
 # ---------------------------------------------------------------------------

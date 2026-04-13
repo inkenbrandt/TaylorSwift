@@ -22,7 +22,7 @@ scale well to multi-day compiled time series.
 import polars as pl
 import numpy as np
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 
 

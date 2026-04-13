@@ -4,7 +4,6 @@ DataQuality assessment, OutlierDetection, quality_filter, rolling_sigma_filter.
 """
 
 import numpy as np
-import pytest
 import polars as pl
 
 from eccospectra.data_quality import (
@@ -200,7 +199,7 @@ class TestMadOutliers:
         x = rng.normal(5.0, 1.0, 50)
         x = np.append(x, 100.0)  # inject obvious outlier
         mask = OutlierDetection.mad_outliers(x)
-        assert mask[-1] == True
+        assert mask[-1]
 
     def test_clean_data_no_outliers(self):
         rng = np.random.default_rng(42)
