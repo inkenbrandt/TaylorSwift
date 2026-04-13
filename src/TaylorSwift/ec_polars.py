@@ -5,6 +5,7 @@ import polars as pl
 import pandas as pd
 import numpy as np
 from scipy import signal
+from typing import Union
 
 from .constants import (
     K_VON_KARMAN,
@@ -28,6 +29,28 @@ _HARDY_D = (1.0, -0.13319669, 0.0056577518, -7.5172865e-5)
 # ---------------------------------------------------------------------------
 # Polars/pandas compatibility helpers
 # ---------------------------------------------------------------------------
+# ── top-of-module helper ───────────────────────────────────────────────────────
+_AnyFrame = Union[pd.DataFrame, pl.DataFrame]
+
+
+def _is_polars(df: _AnyFrame) -> bool:
+    return isinstance(df, pl.DataFrame)
+
+
+def _is_pandas(df: _AnyFrame | None) -> bool:
+    return isinstance(df, pd.DataFrame)
+
+
+def _validate_frame(
+    df: _AnyFrame | None, *, allow_none: bool = True
+) -> _AnyFrame | None:
+    """Validate that *df* is a supported DataFrame backend."""
+    if df is None and allow_none:
+        return None
+    if isinstance(df, (pd.DataFrame, pl.DataFrame)):
+        return df
+    raise TypeError(f"CalcFlux expects a pandas or polars DataFrame, got {type(df)}")
+
 
 def _to_pl_df(df):
     """Convert a pandas or Polars DataFrame to a Polars DataFrame."""
@@ -66,21 +89,21 @@ class CalcFlux:
     def __init__(self, **kwargs):
         # ---- physical constants (from constants.py) ----------------------------
         self.Cp = None
-        self.Rv = R_SPECIFIC['water_vapor']
+        self.Rv = R_SPECIFIC["water_vapor"]
         self.Ru = R_GAS
         self.Cpd = CP_DRY_AIR
-        self.Rd = R_SPECIFIC['dry_air']
-        self.md = MOLAR_MASS['air_dry']
+        self.Rd = R_SPECIFIC["dry_air"]
+        self.md = MOLAR_MASS["air_dry"]
         self.Co = 0.21  # Atmospheric O₂ molar fraction
         self.Mo = 0.032  # O₂ molar mass (kg mol⁻¹)
 
         # ---- thermodynamic & spectral constants --------------------------------
         self.Cpw = 1952.0  # c_p of H₂O vapour (J kg⁻¹ K⁻¹)
         self.Cw = 4218.0  # c_p of liquid water (J kg⁻¹ K⁻¹)
-        self.epsilon = MOLAR_MASS['h2o'] / MOLAR_MASS['air_dry']
+        self.epsilon = MOLAR_MASS["h2o"] / MOLAR_MASS["air_dry"]
         self.g = G0
         self.von_karman = K_VON_KARMAN
-        self.MU_WPL = MOLAR_MASS['air_dry'] / MOLAR_MASS['h2o']
+        self.MU_WPL = MOLAR_MASS["air_dry"] / MOLAR_MASS["h2o"]
         self.Omega = OMEGA
         self.Sigma_SB = SIGMA_SB
 
@@ -125,6 +148,11 @@ class CalcFlux:
         # ---- allow user overrides via kwargs ------------------------------------
         self.__dict__.update(kwargs)
 
+    def set_dataframe(self, df: _AnyFrame | None) -> _AnyFrame | None:
+        """Store a pandas or polars DataFrame on the instance."""
+        self.df = _validate_frame(df)
+        return self.df
+
     # -----------------------------------------------------------------
     # Wind direction & coordinate rotation
     # -----------------------------------------------------------------
@@ -136,47 +164,47 @@ class CalcFlux:
         update_existing_vel: bool = False,
     ):
 
-        if uxavg:
+        if uxavg is not None:
             if update_existing_vel:
                 self.avgvals["Ux"] = uxavg
         else:
-            if "Ux" in self.avgvals.keys():
+            if "Ux" in self.avgvals:
                 uxavg = self.avgvals["Ux"]
             else:
                 print("Please calculate wind velocity averages")
-        if uyavg:
+                return
+
+        if uyavg is not None:
             if update_existing_vel:
                 self.avgvals["Uy"] = uyavg
         else:
-            if "Uy" in self.avgvals.keys():
+            if "Uy" in self.avgvals:
                 uyavg = self.avgvals["Uy"]
             else:
                 print("Please calculate wind velocity averages")
+                return
 
-        if uyavg and uxavg:
-            self.v = np.sqrt(uxavg**2 + uyavg**2)
-            wind_dir = np.arctan(uyavg / uxavg) * 180.0 / np.pi
-            if uxavg < 0:
-                if uyavg >= 0:
-                    wind_dir += wind_dir + 180.0
-                else:
-                    wind_dir -= wind_dir - 180.0
-            wind_compass = -1.0 * wind_dir + self.sonic_dir
-            if wind_compass < 0:
-                wind_compass += 360
-            elif wind_compass > 360:
-                wind_compass -= 360
+        # rest of method unchanged …
+        self.v = np.sqrt(uxavg**2 + uyavg**2)
+        wind_dir = np.arctan(uyavg / uxavg) * 180.0 / np.pi
+        if uxavg < 0:
+            if uyavg >= 0:
+                wind_dir += wind_dir + 180.0
+            else:
+                wind_dir -= wind_dir - 180.0
+        wind_compass = -1.0 * wind_dir + self.sonic_dir
+        if wind_compass < 0:
+            wind_compass += 360
+        elif wind_compass > 360:
+            wind_compass -= 360
 
-            self.wind_compass = wind_compass
-            # Calculate the Lateral Separation Distance Projected Into the Mean Wind Direction
-            self.pathlen = self.PathDist_U * np.abs(
-                np.sin((np.pi / 180) * wind_compass)
-            )
-            return self.pathlen, self.wind_compass
+        self.wind_compass = wind_compass
+        self.pathlen = self.PathDist_U * np.abs(np.sin((np.pi / 180) * wind_compass))
+        return self.pathlen, self.wind_compass
 
     def coord_rotation(
         self,
-        df: pd.DataFrame | None = None,
+        df: _AnyFrame | None = None,
         Ux: str = "Ux",
         Uy: str = "Uy",
         Uz: str = "Uz",
@@ -188,14 +216,15 @@ class CalcFlux:
         """
         if df is None:
             df = self.df
+        df = _validate_frame(df, allow_none=False)
 
-        xmean = df[Ux].mean()
-        ymean = df[Uy].mean()
-        zmean = df[Uz].mean()
+        # .mean() returns a Python float in both pandas and polars
+        xmean = df[Ux].mean()  # type: ignore
+        ymean = df[Uy].mean()  # type: ignore
+        zmean = df[Uz].mean()  # type: ignore
         Uxy = np.sqrt(xmean**2 + ymean**2)
         Uxyz = np.sqrt(xmean**2 + ymean**2 + zmean**2)
 
-        # save for later use
         self.cosv = xmean / Uxy
         self.sinv = ymean / Uxy
         self.sinTheta = zmean / Uxyz
@@ -205,39 +234,48 @@ class CalcFlux:
 
     def rotate_velocity_values(
         self,
-        df: pd.DataFrame | None = None,
+        df: _AnyFrame | None = None,
         Ux: str = "Ux",
         Uy: str = "Uy",
         Uz: str = "Uz",
-    ) -> pd.DataFrame:
+    ) -> _AnyFrame:
         """
         Apply the double-rotation matrix (yaw + pitch) from
         :meth:`coord_rotation` to every instantaneous wind sample.
         """
         if df is None:
             df = self.df
+        df = _validate_frame(df, allow_none=False)
 
         if self.cosTheta is None:
             print("Please run coord_rotation")
-        else:
-            df["Uxr"] = (
-                df[Ux] * self.cosTheta * self.cosv
-                + df[Uy] * self.cosTheta * self.sinv
-                + df[Uz] * self.sinTheta
-            )
-            df["Uyr"] = df[Uy] * self.cosv - df[Ux] * self.sinv
-            df["Uzr"] = (
-                df[Uz] * self.cosTheta
-                - df[Ux] * self.sinTheta * self.cosv
-                - df[Uy] * self.sinTheta * self.sinv
-            )
-
-            self.df = df
             return df
+
+        cv, sv = self.cosv, self.sinv
+        cT, sT = self.cosTheta, self.sinTheta
+
+        if _is_polars(df):
+            df = df.with_columns(  # type: ignore
+                (pl.col(Ux) * cT * cv + pl.col(Uy) * cT * sv + pl.col(Uz) * sT).alias(
+                    "Uxr"
+                ),
+                (pl.col(Uy) * cv - pl.col(Ux) * sv).alias("Uyr"),
+                (pl.col(Uz) * cT - pl.col(Ux) * sT * cv - pl.col(Uy) * sT * sv).alias(
+                    "Uzr"
+                ),
+            )  # type: ignore
+        else:
+            df = df.copy()  # type: ignore # avoid mutating the caller's frame
+            df["Uxr"] = df[Ux] * cT * cv + df[Uy] * cT * sv + df[Uz] * sT
+            df["Uyr"] = df[Uy] * cv - df[Ux] * sv
+            df["Uzr"] = df[Uz] * cT - df[Ux] * sT * cv - df[Uy] * sT * sv
+
+        self.df = df
+        return df
 
     def rotated_components_statistics(
         self,
-        df: pd.DataFrame | None = None,
+        df: _AnyFrame | None = None,
         Ux: str = "Ux",
         Uy: str = "Uy",
         Uz: str = "Uz",
@@ -247,20 +285,17 @@ class CalcFlux:
         """
         if df is None:
             df = self.df
+        df = _validate_frame(df, allow_none=False)
 
-        # Means and standard deviations of rotated components
-        self.avgvals["Uxr"] = df["Uxr"].mean()
-        self.avgvals["Uyr"] = df["Uyr"].mean()
-        self.avgvals["Uzr"] = df["Uzr"].mean()
-        self.stdvals["Uxr"] = df["Uxr"].std()
-        self.stdvals["Uyr"] = df["Uyr"].std()
-        self.stdvals["Uzr"] = df["Uzr"].std()
+        # .mean() / .std() return Python scalars in both backends
+        for col in ("Uxr", "Uyr", "Uzr"):
+            self.avgvals[col] = df[col].mean()  # type: ignore
+            self.stdvals[col] = df[col].std()  # type: ignore
 
-        # Auxiliary: mean wind speed along rotated x′ axis
         self.avgvals["Uav"] = (
-            self.avgvals["Ux"] * self.cosTheta * self.cosv
-            + self.avgvals["Uy"] * self.cosTheta * self.sinv
-            + self.avgvals["Uz"] * self.sinTheta
+            self.avgvals["Ux"] * self.cosTheta * self.cosv  # type: ignore
+            + self.avgvals["Uy"] * self.cosTheta * self.sinv  # type: ignore
+            + self.avgvals["Uz"] * self.sinTheta  # type: ignore
         )
         return
 
@@ -278,50 +313,50 @@ class CalcFlux:
             sinTheta = self.sinTheta
 
         Uz_Ts = (
-            self.covar["Uz-Tsa"] * cosTheta
-            - self.covar["Ux-Tsa"] * sinTheta * cosν
-            - self.covar["Uy-Tsa"] * sinTheta * sinv
+            self.covar["Uz-Tsa"] * cosTheta  # type: ignore
+            - self.covar["Ux-Tsa"] * sinTheta * cosν  # type: ignore
+            - self.covar["Uy-Tsa"] * sinTheta * sinv  # type: ignore
         )
         if np.abs(Uz_Ts) >= np.abs(self.covar["Uz-Tsa"]):
             self.covar["Uz-Tsa"] = Uz_Ts
 
         Uz_pV = (
-            self.covar["Uz-pV"] * cosTheta
-            - self.covar["Ux-pV"] * sinTheta * cosν
-            - self.covar["Uy-pV"] * sinv * sinTheta
+            self.covar["Uz-pV"] * cosTheta  # type: ignore
+            - self.covar["Ux-pV"] * sinTheta * cosν  # type: ignore
+            - self.covar["Uy-pV"] * sinv * sinTheta  # type: ignore
         )
         if np.abs(Uz_pV) >= np.abs(self.covar["Uz-pV"]):
             self.covar["Uz-pV"] = Uz_pV
         self.covar["Ux-Q"] = (
-            self.covar["Ux-Q"] * cosTheta * cosν
-            + self.covar["Uy-Q"] * cosTheta * sinv
-            + self.covar["Uz-Q"] * sinTheta
+            self.covar["Ux-Q"] * cosTheta * cosν  # type: ignore
+            + self.covar["Uy-Q"] * cosTheta * sinv  # type: ignore
+            + self.covar["Uz-Q"] * sinTheta  # type: ignore
         )
-        self.covar["Uy-Q"] = self.covar["Uy-Q"] * cosν - self.covar["Uy-Q"] * sinv
+        self.covar["Uy-Q"] = self.covar["Uy-Q"] * cosν - self.covar["Uy-Q"] * sinv  # type: ignore
         self.covar["Uz-Q"] = (
-            self.covar["Uz-Q"] * cosTheta
-            - self.covar["Ux-Q"] * sinTheta * cosν
-            - self.covar["Uy-Q"] * sinv * sinTheta
+            self.covar["Uz-Q"] * cosTheta  # type: ignore
+            - self.covar["Ux-Q"] * sinTheta * cosν  # type: ignore
+            - self.covar["Uy-Q"] * sinv * sinTheta  # type: ignore
         )
         self.covar["Ux-Uz"] = (
-            self.covar["Ux-Uz"] * cosν * (cosTheta**2 - sinTheta**2)
-            - 2 * self.covar["Ux-Uy"] * sinTheta * cosTheta * sinv * cosν
-            + self.covar["Uy-Uz"] * sinv * (cosTheta**2 - sinTheta**2)
-            - self.errvals["Ux"] * sinTheta * cosTheta * cosν**2
-            - self.errvals["Uy"] * sinTheta * cosTheta * sinv**2
-            + self.errvals["Uz"] * sinTheta * cosTheta
+            self.covar["Ux-Uz"] * cosν * (cosTheta**2 - sinTheta**2)  # type: ignore
+            - 2 * self.covar["Ux-Uy"] * sinTheta * cosTheta * sinv * cosν  # type: ignore
+            + self.covar["Uy-Uz"] * sinv * (cosTheta**2 - sinTheta**2)  # type: ignore
+            - self.errvals["Ux"] * sinTheta * cosTheta * cosν**2  # type: ignore
+            - self.errvals["Uy"] * sinTheta * cosTheta * sinv**2  # type: ignore
+            + self.errvals["Uz"] * sinTheta * cosTheta  # type: ignore
         )
         self.covar["Uy-Uz"] = (
-            self.covar["Uy-Uz"] * cosTheta * cosν
-            - self.covar["Ux-Uz"] * cosTheta * sinv
-            - self.covar["Ux-Uy"] * sinTheta * (cosν**2 - sinv**2)
-            + self.errvals["Ux"] * sinTheta * sinv * cosν
-            - self.errvals["Uy"] * sinTheta * sinv * cosν
+            self.covar["Uy-Uz"] * cosTheta * cosν  # type: ignore
+            - self.covar["Ux-Uz"] * cosTheta * sinv  # type: ignore
+            - self.covar["Ux-Uy"] * sinTheta * (cosν**2 - sinv**2)  # type: ignore
+            + self.errvals["Ux"] * sinTheta * sinv * cosν  # type: ignore
+            - self.errvals["Uy"] * sinTheta * sinv * cosν  # type: ignore
         )
         self.covar["Uz-Sd"] = (
-            self.covar["Uz-Sd"] * cosTheta
-            - self.covar["Ux-Sd"] * sinTheta * cosν
-            - self.covar["Uy-Sd"] * sinv * sinTheta
+            self.covar["Uz-Sd"] * cosTheta  # type: ignore
+            - self.covar["Ux-Sd"] * sinTheta * cosν  # type: ignore
+            - self.covar["Uy-Sd"] * sinv * sinTheta  # type: ignore
         )
         self.covar["Uxy-Uz"] = np.sqrt(
             self.covar["Ux-Uz"] ** 2 + self.covar["Uy-Uz"] ** 2
@@ -612,8 +647,48 @@ class CalcFlux:
     # Utilities
     # -----------------------------------------------------------------
 
-    def dayfrac(self, df: pd.DataFrame) -> float:
-        """Return the fraction of a day represented by the DataFrame's time span."""
-        return (df.last_valid_index() - df.first_valid_index()) / pd.to_timedelta(
-            1, unit="D"
-        )
+
+def dayfrac(self, df: _AnyFrame, time_col: str | None = None) -> float:
+    """
+    Return the fraction of a day represented by the DataFrame's time span.
+
+    For pandas, the method uses the DatetimeIndex by default to preserve the
+    original behaviour. For polars, provide ``time_col`` or include at least
+    one Datetime/Date column that can be inferred automatically.
+    """
+    df = _validate_frame(df, allow_none=False)
+
+    if _is_pandas(df):
+        if time_col is not None:
+            time_values = pd.to_datetime(df[time_col])
+            start = time_values.iloc[0]
+            end = time_values.iloc[-1]
+        else:
+            if not isinstance(df.index, pd.DatetimeIndex):
+                raise TypeError(
+                    "pandas DataFrame must have a DatetimeIndex when time_col is not provided"
+                )
+            start = df.first_valid_index()
+            end = df.last_valid_index()
+    else:
+        if time_col is None:
+            datetime_cols = [
+                col
+                for col, dtype in zip(df.columns, df.dtypes)
+                if str(dtype).startswith("Datetime") or str(dtype) == "Date"
+            ]
+            if not datetime_cols:
+                raise TypeError(
+                    "polars DataFrame requires a datetime/date column or an explicit time_col"
+                )
+            time_col = datetime_cols[0]
+
+        time_values = df[time_col]
+        if time_values.is_empty():
+            return 0.0
+        start = time_values.min()
+        end = time_values.max()
+        start = pd.Timestamp(start)
+        end = pd.Timestamp(end)
+
+    return (end - start) / pd.to_timedelta(1, unit="D")  # type: ignore
