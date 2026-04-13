@@ -529,6 +529,13 @@ def process_file(df, config: SiteConfig, bins_per_decade: int = 20):
 
     df = df.sort('TIMESTAMP')
 
+    # Drop rows where the timestamp failed to parse (Polars sort puts nulls
+    # first with the default nulls_last=False, so df['TIMESTAMP'][0] would
+    # be None for any file that has even one unparseable timestamp row).
+    df = df.filter(pl.col('TIMESTAMP').is_not_null())
+    if len(df) == 0:
+        return []
+
     # --- Build interval edge list without pandas ---------------------------
     period_sec = int(config.averaging_period * 60)
     td = timedelta(seconds=period_sec)
@@ -552,6 +559,32 @@ def process_file(df, config: SiteConfig, bins_per_decade: int = 20):
         edges.append(t)
         t += td
     edges.append(t)   # sentinel past the last record
+
+    # --- Warn if the declared sampling_freq looks wrong for this file ----------
+    # Infer fs from the median inter-sample interval across the first 10 000
+    # rows (cheap and avoids scanning the whole file).  If it deviates by
+    # more than 20 % from config.sampling_freq the caller probably passed the
+    # wrong SiteConfig — skip every interval silently would be the only
+    # outcome, so a clear warning is more helpful than silence.
+    if len(df) > 10:
+        dt_ms_series = (
+            df[:10_000]['TIMESTAMP']
+            .diff()
+            .dt.total_milliseconds()
+            .drop_nulls()
+        )
+        dt_ms_pos = dt_ms_series.filter(dt_ms_series > 0)
+        if len(dt_ms_pos) > 0:
+            fs_data = 1000.0 / float(dt_ms_pos.median())
+            if abs(fs_data - config.sampling_freq) / config.sampling_freq > 0.20:
+                import warnings
+                warnings.warn(
+                    f"process_file: data appears to be sampled at {fs_data:.1f} Hz "
+                    f"but config.sampling_freq = {config.sampling_freq} Hz.  "
+                    f"Intervals requiring {int(config.averaging_period * 60 * config.sampling_freq):,} "
+                    f"samples will be skipped.  Pass the correct sampling_freq to SiteConfig.",
+                    stacklevel=2,
+                )
 
     # --- Process each interval ---------------------------------------------
     n_expected = int(config.averaging_period * 60 * config.sampling_freq)

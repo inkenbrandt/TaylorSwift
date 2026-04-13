@@ -146,9 +146,18 @@ def read_toa5(
             pl.col('TIMESTAMP').str.strip_chars('"').alias('TIMESTAMP')
         )
         if parse_dates:
+            # High-frequency (20 Hz) TOA5 files often carry sub-second
+            # timestamps such as "2023-08-29 00:00:00.05".  Polars'
+            # format=None inference can silently produce all-null when it
+            # cannot uniquely determine the format from the sample rows, so
+            # we strip the fractional-second part first (matching the
+            # behaviour of _parse_toa5_timestamp) and then use an explicit
+            # format string.  The regex r'\.\d+$' removes ".05", ".000",
+            # ".5000000" etc. and is a no-op on second-precision strings.
             df = df.with_columns(
                 pl.col('TIMESTAMP')
-                .str.to_datetime(format=None, strict=False)
+                .str.replace(r'\.\d+$', '', literal=False)
+                .str.to_datetime(format='%Y-%m-%d %H:%M:%S', strict=False)
                 .alias('TIMESTAMP')
             )
 
