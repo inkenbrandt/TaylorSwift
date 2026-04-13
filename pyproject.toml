@@ -25,6 +25,7 @@ dependencies = [
     "scipy>=1.10",
     "polars>=0.19",
     "pandas>=1.5",
+    "pyarrow",
     "KDEpy>=1.1",
     "matplotlib>=3.7",
 ]

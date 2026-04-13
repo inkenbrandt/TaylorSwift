@@ -5,7 +5,6 @@ Uses synthetic in-memory TOA5 files written to a temporary directory so no
 real instrument data is required.
 """
 
-import textwrap
 import numpy as np
 import polars as pl
 import pytest
