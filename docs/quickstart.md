@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-pip install eccospectra
+pip install TaylorSwift
 ```
 
 ## 1. Configure your site
@@ -11,9 +11,8 @@ pip install eccospectra
 `SiteConfig` holds the tower geometry and sampling parameters needed throughout the pipeline.
 
 ```python
-import eccospectra as ec
-
-config = ec.SiteConfig(
+import TaylorSwift as tswift
+config = tswift.SiteConfig(
     z_measurement=3.0,     # measurement height above ground [m]
     z_canopy=0.3,          # canopy height [m]  (d = 2/3 hc, z0 = 0.1 hc by default)
     sampling_freq=20.0,    # data acquisition rate [Hz]
@@ -26,7 +25,7 @@ config = ec.SiteConfig(
 ### Single TOA5 file
 
 ```python
-df, meta = ec.read_toa5("TOA5_mysite_2023_06_10.dat")
+df, meta = tswift.read_toa5("TOA5_mysite_2023_06_10.dat")
 print(df.head())
 print(meta['station_id'])
 ```
@@ -34,7 +33,7 @@ print(meta['station_id'])
 ### Multi-file compilation (e.g. a full day)
 
 ```python
-df, meta = ec.compile_toa5(
+df, meta = tswift.compile_toa5(
     "/data/raw/2023-06-10/",
     pattern="TOA5_*.dat",
     start_date=datetime(2023, 6, 10, 0, 0),
@@ -59,7 +58,7 @@ df_clean = despike_dataframe(
 ## 4. Compute spectra and cospectra
 
 ```python
-results = ec.process_file(df_clean, config)
+results = tswift.process_file(df_clean, config)
 print(f"Processed {len(results)} intervals")
 ```
 
@@ -75,7 +74,7 @@ Each element of `results` is a `SpectralResult` containing:
 ## 5. Quality control
 
 ```python
-from eccospectra.qc import run_qc
+from TaylorSwift.qc import run_qc
 
 results = run_qc(results)
 
@@ -88,7 +87,7 @@ print(res.qc_flags['ustar_filter'])     # True if u* < 0.1 m/s
 ## 6. Spectral corrections (optional)
 
 ```python
-from eccospectra.corrections import InstrumentConfig, apply_spectral_corrections
+from TaylorSwift.corrections import InstrumentConfig, apply_spectral_corrections
 
 instrument = InstrumentConfig()   # defaults to IRGASON
 results = apply_spectral_corrections(
@@ -102,7 +101,7 @@ results = apply_spectral_corrections(
 ## 7. Plot
 
 ```python
-from eccospectra.plotting import plot_cospectra, plot_spectra, plot_ogive
+from TaylorSwift.plotting import plot_cospectra, plot_spectra, plot_ogive
 
 fig_co  = plot_cospectra(results, show_kaimal=True)
 fig_sp  = plot_spectra(results)
@@ -117,9 +116,9 @@ If you have NumPy arrays rather than a DataFrame:
 
 ```python
 import numpy as np
-import eccospectra as ec
+import TaylorSwift as tswift
 
-config = ec.SiteConfig(z_measurement=3.0, z_canopy=0.3,
+config = tswift.SiteConfig(z_measurement=3.0, z_canopy=0.3,
                        sampling_freq=20.0, averaging_period=30.0)
 
 rng = np.random.default_rng(0)
@@ -131,7 +130,7 @@ T   = 20.0 + rng.normal(0, 0.5, n)
 co2 = 700.0 + rng.normal(0, 5.0, n)
 h2o = 10.0  + rng.normal(0, 0.5, n)
 
-result = ec.process_interval(u, v, w, T, co2, h2o, config)
+result = tswift.process_interval(u, v, w, T, co2, h2o, config)
 print(f"u*  = {result.ustar:.3f} m/s")
 print(f"H   = {result.H:.1f} W/m²")
 print(f"z/L = {result.zL:.3f}")
