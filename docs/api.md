@@ -124,7 +124,7 @@ and detects data gaps.
 
 ---
 
-## eccospectra.corrections
+## TaylorSwift.corrections
 
 ### `InstrumentConfig`
 
@@ -208,7 +208,7 @@ Webb-Pearman-Leuning (1980) density correction for open-path gas analysers.
 
 ---
 
-## eccospectra.qc
+## TaylorSwift.qc
 
 ### `fit_inertial_slope(freq_nd, ncosp, f_range=(1.0, 8.0))`
 
@@ -244,7 +244,7 @@ Batch QC on a list of `SpectralResult` objects. Adds to each `qc_flags`:
 
 ---
 
-## eccospectra.plotting
+## TaylorSwift.plotting
 
 ### `plot_cospectra(results, show_kaimal=True, show_inertial=True)`
 
@@ -264,7 +264,7 @@ Time series of key turbulence parameters for quick QC inspection.
 
 ---
 
-## eccospectra.constants
+## TaylorSwift.constants
 
 Physical constants, surface-type enumerations, default thresholds, and roughness helper
 functions for eddy covariance calculations.
@@ -356,7 +356,7 @@ bypass table/empirical estimates.
 
 ---
 
-## eccospectra.data_quality
+## TaylorSwift.data_quality
 
 Data quality assessment following Foken *et al.* (2004, 2012).
 
@@ -443,7 +443,7 @@ Rolling ±σ·std spike filter on a time-indexed Polars DataFrame.
 
 ---
 
-## eccospectra.ec_polars
+## TaylorSwift.ec_polars
 
 High-frequency eddy covariance flux processing pipeline with Polars/pandas
 compatibility.  Transcribed from original Fortran/Visual Basic scripts by
