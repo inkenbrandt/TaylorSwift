@@ -1,6 +1,6 @@
 # API Reference
 
-## eccospectra.core
+## TaylorSwift.core
 
 ### `SiteConfig`
 
