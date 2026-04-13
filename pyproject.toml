@@ -41,18 +41,18 @@ docs = [
 ]
 
 [project.urls]
-Repository = "https://github.com/paultgriffiths/eccospectra"
-Issues = "https://github.com/paultgriffiths/eccospectra/issues"
+Repository = "https://github.com/paultgriffiths/TaylorSwift"
+Issues = "https://github.com/paultgriffiths/TaylorSwift/issues"
 
 [tool.setuptools]
-packages = ["eccospectra"]
+packages = ["TaylorSwift"]
 
 [tool.setuptools.package-dir]
-eccospectra = "src/TaylorSwift"
+TaylorSwift = "src/TaylorSwift"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--tb=short -q"
 
 [tool.coverage.run]
-source = ["src/eccospectra"]
+source = ["src/TaylorSwift"]
