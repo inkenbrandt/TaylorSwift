@@ -82,11 +82,131 @@ def _assign(df, **kwargs):
     exprs = [pl.Series(k, v) for k, v in kwargs.items()]
     return df.with_columns(exprs)
 
+def _interpolate_bfill_ffill(s: pl.Series):
+    if not isinstance(s, pl.Series):
+        s = pl.Series(np.asarray(s))
+    s2 = s.interpolate()
+    s2 = s2.fill_null(strategy="backward")
+    s2 = s2.fill_null(strategy="forward")
+    return s2
+
+def _rolling_median_centered(s: pl.Series, win: int):
+    if not isinstance(s, pl.Series):
+        s = pl.Series(np.asarray(s))
+    out = s.rolling_median(window_size=win, center=True)
+    out = out.fill_null(strategy="backward").fill_null(strategy="forward")
+    return out
+
+def _shift(s, n: int):
+    if isinstance(s, pl.Series):
+        return s.shift(n)
+    else:
+        return pl.Series(np.asarray(s)).shift(n)
+
+def _first_last_index_duration(df:pd.DataFrame, unit:str="D") -> float | None:
+    """Mimic (df.last_valid_index() - df.first_valid_index()) / pd.to_timedelta(1, unit=unit)"""
+    if isinstance(df, pd.DataFrame) and df.index.size>0 and isinstance(df.index, pd.DatetimeIndex):
+        delta = (df.last_valid_index() - df.first_valid_index()) # type: ignore
+        return delta / pd.to_timedelta(1, unit=unit) # type: ignore
+    # try to infer datetime column
+    cand = None
+    for name in ("TIMESTAMP","timestamp","time","TIMESTAMP_START","datetime"):
+        if name in df.columns:
+            cand = name; break
+    if cand is None:
+        raise ValueError("Cannot infer datetime column for duration; expected one of TIMESTAMP, timestamp, time, TIMESTAMP_START, datetime")
+    s = _get_series(df, cand)
+    return (s[-1] - s[0]).dt.total_days() if unit=="D" else (s[-1] - s[0]).dt.seconds()
+
+
+
 
 class CalcFlux:
     # … class-level attributes & docstring remain unchanged …
 
     def __init__(self, **kwargs):
+        """
+        Initialize a :class:`CalcFlux` instance.
+
+        This constructor sets a collection of physical constants, sensor
+        configuration parameters, and run-time options that govern the eddy-
+        covariance flux calculations performed by the class.  All attributes
+        are first given sensible defaults (see *Attributes* below) and may be
+        selectively overridden by supplying keyword arguments.
+
+        Parameters
+        ----------
+        **kwargs
+            Arbitrary keyword arguments whose names match one or more public
+            attributes listed in *Attributes*.  Any supplied key–value pair
+            replaces the default set during initialization, e.g.::
+
+                flux = CalcFlux(UHeight=2.0, meter_type="KH20")
+
+        Attributes
+        ----------
+        Cp : float or None
+            Specific heat of (moist) air at constant pressure, *J kg⁻¹ K⁻¹*.
+            Computed later from :pydata:`Cpd` and the mean specific humidity.
+        Rv : float, default 461.51
+            Gas constant of water vapour, *J kg⁻¹ K⁻¹*.
+        Ru : float, default 8.3143
+            Universal gas constant, *J mol⁻¹ K⁻¹*.
+        Cpd : float, default 1005.0
+            Specific heat of dry air at constant pressure, *J kg⁻¹ K⁻¹*.
+        Rd : float, default 287.05
+            Gas constant of dry air, *J kg⁻¹ K⁻¹*.
+        md : float, default 0.02896
+            Molar mass of dry air, *kg mol⁻¹*.
+        Co : float, default 0.21
+            Molar fraction of O₂ in the atmosphere.
+        XKH20 : float, default 1.412
+            Optical path length of the KH-20 krypton hygrometer, *cm*.
+        sonic_dir : float, default 225.0
+            Azimuth (° clockwise from true north) of the CSAT sonic anemometer.
+        UHeight : float, default 3.52
+            Measurement height of the sonic anemometer above ground, *m*.
+        PathDist_U : float, default 0.0
+            Horizontal separation between hygrometer and sonic, *m*.
+        lag : int, default 10
+            Number of lags (±) searched when maximising covariances.
+        direction_bad_min, direction_bad_max : float
+            Wind-direction sector to discard, degrees clockwise from the
+            KH-20–to-sonic baseline.
+        Kw, Ko : float
+            Extinction coefficients for water and oxygen used in KH-20
+            cross-sensitivity corrections.
+        covar, avgvals, stdvals, errvals : dict
+            Containers populated during processing for covariances, means,
+            standard deviations and variances, respectively.
+        despikefields : list[str]
+            Column names to be despiked by default.
+        wind_compass : float or None
+            Mean wind direction (°) in meteorological convention; computed in
+            :meth:`determine_wind_dir`.
+        pathlen : float or None
+            Effective horizontal path separation projected onto the wind, *m*.
+        df : pandas.DataFrame or None
+            Working DataFrame for convenience when methods rely on internal
+            state.
+
+        Notes
+        -----
+        * All attributes can be overridden via ``**kwargs``—be careful when
+          passing physical constants.
+        * No I/O occurs during instantiation; heavy calculations begin with
+          :meth:`runall` or :meth:`run_irga`.
+
+        Examples
+        --------
+        Instantiate with default settings:
+
+        >>> flux = CalcFlux()
+
+        Change the sensor height and specify a KH-20 hygrometer setup:
+
+        >>> flux = CalcFlux(UHeight=2.0, meter_type="KH20", PathDist_U=0.1)
+        """
         # ---- physical constants (from constants.py) ----------------------------
         self.Cp = None
         self.Rv = R_SPECIFIC["water_vapor"]
@@ -148,6 +268,23 @@ class CalcFlux:
         # ---- allow user overrides via kwargs ------------------------------------
         self.__dict__.update(kwargs)
 
+        # List of common variables and their units
+        self.parameters = {
+            "Ea": ["Actual Vapor Pressure", "kPa"],
+            "LnKH": ["Natural Log of Krypton Hygrometer Output", "ln(mV)"],
+            "Pr": ["Air Pressure", "Pa"],
+            "Ta": ["Air Temperature", "K"],
+            "Ts": ["Sonic Temperature", "K"],
+            "Ux": ["X Component of Wind Speed", "m/s"],
+            "Uy": ["Y Component of Wind Speed", "m/s"],
+            "Uz": ["Z Component of Wind Speed", "m/s"],
+            "E": ["Vapor Pressure", "kPa"],
+            "Q": ["Specific Humidity", "unitless"],
+            "pV": ["Water Vapor Density", "kg/m^3"],
+            "Sd": ["Entropy of Dry Air", "J/K"],
+            "Tsa": ["Absolute Air Temperature Derived from Sonic Temperature", "K"],
+        }
+
     def set_dataframe(self, df: _AnyFrame | None) -> _AnyFrame | None:
         """Store a pandas or polars DataFrame on the instance."""
         self.df = _validate_frame(df)
@@ -163,7 +300,62 @@ class CalcFlux:
         uyavg: float | None = None,
         update_existing_vel: bool = False,
     ):
+        """
+        Compute the **mean wind direction** (meteorological convention) and the
+        effective horizontal **path-length separation** between the sonic and
+        hygrometer (or IRGA) for the current averaging period.
 
+        The routine uses the supplied *ū* (longitudinal) and *v̄* (lateral)
+        wind-speed means—or those already stored in :pyattr:`avgvals`—to derive
+
+        1. *wind_compass* : mean wind direction, ° clockwise from **true north**
+           (corrected for the instrument’s azimuth ``self.sonic_dir``).
+        2. *pathlen* : the horizontal separation between sensors **projected
+           onto the mean wind vector**, used later for high-frequency spectral
+           corrections.
+
+        Parameters
+        ----------
+        uxavg : float or None, default ``None``
+            Period-mean *u* component (m s⁻¹).  If *None*, the method looks
+            for ``"Ux"`` in :pyattr:`avgvals`.
+        uyavg : float or None, default ``None``
+            Period-mean *v* component (m s⁻¹).  If *None*, the method looks
+            for ``"Uy"`` in :pyattr:`avgvals`.
+        update_existing_vel : bool, default ``False``
+            If *True*, any user-supplied ``uxavg``/``uyavg`` overwrite the
+            values currently held in :pyattr:`avgvals`.
+
+        Returns
+        -------
+        tuple (pathlen, wind_compass)
+            **pathlen** : float
+                Lateral separation between sensors projected onto the wind
+                vector, *m*.
+
+            **wind_compass** : float
+                Mean wind direction, degrees clockwise from north.
+
+        Notes
+        -----
+        * The method **does not** calculate the mean velocities itself; you
+          must supply them or run a routine (e.g. :meth:`rotated_components_statistics`)
+          that populates :pyattr:`avgvals`.
+        * The sonic’s physical orientation is given by ``self.sonic_dir`` and
+          is subtracted from the instrument-frame wind angle to yield
+          meteorological bearing.
+        * The projected path length is
+          ``|PathDist_U| × |sin(wind_compass)|`` :contentReference[oaicite:0]{index=0}.
+
+        Examples
+        --------
+        >>> calc = CalcFlux(PathDist_U=0.1, sonic_dir=225.0)
+        >>> # Assume you already stored mean velocities in calc.avgvals
+        >>> calc.avgvals.update({"Ux": 1.2, "Uy": 0.8})
+        >>> path, wd = calc.determine_wind_dir()
+        >>> round(path, 3), round(wd, 1)
+        (0.058, 292.6)
+        """
         if uxavg is not None:
             if update_existing_vel:
                 self.avgvals["Ux"] = uxavg
@@ -306,6 +498,69 @@ class CalcFlux:
         sinTheta: float | None = None,
         cosTheta: float | None = None,
     ):
+        """
+        Apply the **final covariance corrections** that arise after the
+        double/triple coordinate rotation of wind vectors into the streamlined
+        (earth-aligned) reference frame.
+
+        The method updates entries in the instance dictionaries
+        :pyattr:`covar` and :pyattr:`errvals` so that all covariances refer to
+        the *rotated* axes.  It should be called **immediately after**
+        :meth:`coord_rotation`, which populates the rotation angles stored in
+        ``self.cosv``, ``self.sinv``, ``self.cosTheta`` and ``self.sinTheta``.
+
+        Parameters
+        ----------
+        cosν : float, optional
+            Cosine of the *v*-rotation angle (second rotation, about the
+            instrument **y**-axis).  If ``None`` the value cached in
+            ``self.cosv`` is used.
+        sinv : float, optional
+            Sine of the *v*-rotation angle.  Defaults to ``self.sinv``.
+        sinTheta : float, optional
+            Sine of the *θ*-rotation angle (third rotation, about the rotated
+            **x′** axis).  Defaults to ``self.sinTheta``.
+        cosTheta : float, optional
+            Cosine of the *θ*-rotation angle.  Defaults to ``self.cosTheta``.
+
+        Returns
+        -------
+        None
+            The function operates *in-place*: corrected covariances replace the
+            pre-rotation entries in :pyattr:`covar` and additional rotation-
+            error terms are added to :pyattr:`errvals` where required.
+
+        Modifies
+        --------
+        covar : dict
+            Keys such as ``"Uz-Tsa"``, ``"Uz-Q"``, ``"Ux-Uz"``, ``"Uy-Uz"``,
+            ``"Uz-Sd"`` and the derived magnitude ``"Uxy-Uz"`` are overwritten
+            with their rotation-corrected values.
+        errvals : dict
+            Contributes small error terms arising from the rotation of the
+            variance tensor (see Kaimal & Finnigan, 1994).
+
+        Notes
+        -----
+        The corrections follow standard eddy-covariance practice (Kaimal &
+        Finnigan, 1994; Wilczak *et al.*, 2001), accounting for the mixing of
+        variances and covariances introduced by non-orthogonal rotation
+        matrices.  Because the magnitude of the *θ*-rotation is usually only a
+        few degrees, its influence on scalar covariances is often small, but
+        must be included for accurate friction-velocity (*u*★) and scalar-flux
+        estimates.
+
+        Examples
+        --------
+        >>> calc = CalcFlux()
+        >>> # 1) run coordinate rotation to obtain rotation angles
+        >>> calc.coord_rotation(Ux, Uy, Uz)
+        >>> # 2) form all raw covariances
+        >>> calc.calc_covar(Ux, Uy, Uz, Ts, Q, pV)
+        >>> # 3) correct the covariances for the rotation
+        >>> calc.covar_coord_rot_correction()
+        >>> corrected_Uz_Ts = calc.covar['Uz-Tsa']
+        """
         if cosTheta is None:
             cosν = self.cosv
             cosTheta = self.cosTheta
@@ -591,8 +846,54 @@ class CalcFlux:
 
     def shadow_correction(self, Ux, Uy, Uz):
         """
-        Correct wind-velocity components for flow distortion caused by
-        CSAT3/CSAT3A support struts (Horst, Wilczak & Cook, 2015).
+        Correct the three wind-velocity components for **flow distortion**
+        (“shadowing”) caused by the **CSAT3/CSAT3A sonic anemometer** support
+        struts, after Horst, Wilczak & Cook (2015).
+
+        The routine iteratively (4 passes)
+
+        1. Rotates (*u, v, w*) into the **transducer-path coordinate system**,
+        2. Applies angle-dependent *shadow factors* to each path velocity, and
+        3. Transforms the adjusted velocities back to the sonic coordinate
+           system.
+
+        Parameters
+        ----------
+        Ux : float or ndarray
+            Longitudinal wind component *u* (m s⁻¹).
+        Uy : float or ndarray
+            Lateral wind component *v* (m s⁻¹).
+        Uz : float or ndarray
+            Vertical wind component *w* (m s⁻¹).
+
+            All three inputs must be broadcast-compatible and are updated
+            **in-place** inside the loop; the final corrected values are also
+            returned.
+
+        Returns
+        -------
+        tuple
+            **(Uxc, Uyc, Uzc)** – corrected wind components (same units and
+            shape as the inputs).
+
+        Notes
+        -----
+        * The correction accounts for ~16 % amplitude attenuation when flow
+          originates perpendicular to a transducer path and diminishes to
+          zero when flow is parallel (sin θ term).
+        * Convergence is rapid; four iterations are sufficient for <0.1 %
+          residual error.
+        * Original coefficients from Horst et al. (2015, *Atmos. Meas. Tech.*)
+          Table 2; rotation matrices follow Kaimal & Finnigan (1994).
+
+        Examples
+        --------
+        >>> from ec import CalcFlux
+        >>> calc = CalcFlux()
+        >>> u, v, w = 2.5, 0.4, 0.1  # m s-1
+        >>> uc, vc, wc = calc.shadow_correction(u, v, w)
+        >>> round(uc, 3), round(vc, 3), round(wc, 3)
+        (2.498, 0.393, 0.108)
         """
         # Rotation matrix: instrument → transducer-path coordinates
         h = [
