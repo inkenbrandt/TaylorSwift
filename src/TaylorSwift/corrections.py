@@ -73,6 +73,21 @@ class InstrumentConfig:
 
     Default values are for the Campbell Scientific IRGASON (integrated
     open-path sonic anemometer + CO₂/H₂O gas analyser).
+
+    Attributes:
+        sonic_path_length: Path length of the sonic anemometer [m].
+        sonic_path_separation: Separation between horizontal paths [m].
+        irga_path_length: Optical path length of the gas analyser [m].
+        irga_path_diameter: Optical path diameter of the gas analyser [m].
+        sensor_separation_lateral: Lateral separation perpendicular to wind [m].
+        sensor_separation_longitudinal: Longitudinal separation parallel to wind [m].
+        sensor_separation_vertical: Vertical separation [m].
+        tau_sonic_T: Time constant for sonic temperature [s].
+        tau_co2: Time constant for CO₂ sensor response [s].
+        tau_h2o: Time constant for H₂O sensor response [s].
+        tau_T: Time constant for sonic T response [s].
+        irga_type: Type of gas analyser ('open_path' or 'enclosed_path').
+        model: Instrument model name.
     """
     # --- Sonic anemometer ---
     sonic_path_length: float = 0.10        # sonic path length [m]
@@ -359,7 +374,7 @@ def despike_dataframe(
     ----------
     df : pl.DataFrame or pd.DataFrame
         Raw high-frequency eddy covariance DataFrame (e.g. as returned by
-        :func:`eccospectra.io.read_toa5`).  The DataFrame is not modified
+        :func:`TaylorSwift.io.read_toa5`).  The DataFrame is not modified
         in-place; a copy / clone is returned with the same type as the input.
     columns : list of str
         Column names to despike.  Typical choices for an IRGASON dataset are
@@ -387,8 +402,8 @@ def despike_dataframe(
 
     Examples
     --------
-    >>> from eccospectra.io import read_toa5
-    >>> from eccospectra.corrections import despike_dataframe
+    >>> from TaylorSwift.io import read_toa5
+    >>> from TaylorSwift.corrections import despike_dataframe
     >>> df, meta = read_toa5('mydata.dat')
     >>> df_clean = despike_dataframe(
     ...     df,

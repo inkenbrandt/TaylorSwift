@@ -1,11 +1,11 @@
 """
-Tests for eccospectra.qc — inertial slope fitting, stationarity, batch QC.
+Tests for TaylorSwift.qc — inertial slope fitting, stationarity, batch QC.
 """
 
 import numpy as np
 import pytest
 
-from eccospectra.qc import fit_inertial_slope, classify_slope, stationarity_test, run_qc
+from TaylorSwift.qc import fit_inertial_slope, classify_slope, stationarity_test, run_qc
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ class TestRunQC:
         assert results == []
 
     def test_result_with_empty_freq_skipped(self):
-        from eccospectra.core import SpectralResult
+        from TaylorSwift.core import SpectralResult
         res = SpectralResult()   # empty arrays by default
         run_qc([res])            # should not raise
         assert res.qc_flags == {}
