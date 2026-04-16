@@ -26,7 +26,7 @@ For development:
 
 ```bash
 git clone https://github.com/inkenbrandt/TaylorSwift
-cd eccospectra
+cd TaylorSwift
 pip install -e ".[dev]"
 ```
 
@@ -98,7 +98,7 @@ list[SpectralResult]
 ```bash
 pytest
 # or with coverage:
-pytest --cov=eccospectra
+pytest --cov=TaylorSwift
 ```
 
 ## References
