@@ -1,0 +1,35 @@
+site_name: TaylorSwift
+theme:
+  name: material
+  palette:
+    primary: teal
+    accent: cyan
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_category_heading: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - API Reference: api.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
