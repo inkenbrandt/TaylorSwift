@@ -6,6 +6,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+site/
 *.DS_Store
 /examples/data/TOA5_23861_Time_Series_133_2021_07_10_0000.dat
 /examples/data/TOA5_21025_Time_Series_29_2023_08_30_0000.dat

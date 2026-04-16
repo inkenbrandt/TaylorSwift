@@ -1,13 +1,13 @@
 """
-Shared pytest fixtures for eccospectra tests.
+Shared pytest fixtures for TaylorSwift tests.
 """
 
 import numpy as np
 import pytest
 from datetime import datetime
 
-from eccospectra import SiteConfig
-from eccospectra.core import SpectralResult
+from TaylorSwift import SiteConfig
+from TaylorSwift.core import SpectralResult
 
 
 # ---------------------------------------------------------------------------

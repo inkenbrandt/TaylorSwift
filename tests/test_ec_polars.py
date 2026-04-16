@@ -1,5 +1,5 @@
 """
-Tests for eccospectra.ec_polars — CalcFlux class and Polars/pandas helpers.
+Tests for TaylorSwift.ec_polars — CalcFlux class and Polars/pandas helpers.
 
 Integration tests for runall/run_irga are intentionally omitted as they
 require fully labelled, sensor-specific DataFrames.  These tests focus on
@@ -11,7 +11,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from eccospectra.ec_polars import (
+from TaylorSwift.ec_polars import (
     CalcFlux,
     _to_pl_df,
     _to_same_type,
