@@ -45,7 +45,7 @@ print(f"Loaded {len(df):,} rows from {meta['n_files']} files")
 ## 3. Optional: despike the raw time series
 
 ```python
-from eccospectra.corrections import despike_dataframe
+from TaylorSwift.corrections import despike_dataframe
 
 df_clean = despike_dataframe(
     df,
@@ -74,6 +74,7 @@ Each element of `results` is a `SpectralResult` containing:
 ## 5. Quality control
 
 ```python
+import TaylorSwift as tswift
 from TaylorSwift.qc import run_qc
 
 results = run_qc(results)
