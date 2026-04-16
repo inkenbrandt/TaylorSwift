@@ -112,7 +112,8 @@ def _first_last_index_duration(df:pd.DataFrame, unit:str="D") -> float | None:
     cand = None
     for name in ("TIMESTAMP","timestamp","time","TIMESTAMP_START","datetime"):
         if name in df.columns:
-            cand = name; break
+            cand = name
+            break
     if cand is None:
         raise ValueError("Cannot infer datetime column for duration; expected one of TIMESTAMP, timestamp, time, TIMESTAMP_START, datetime")
     s = _get_series(df, cand)
