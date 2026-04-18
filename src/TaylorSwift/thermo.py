@@ -3,11 +3,11 @@ import numpy as np
 
 
 def convert_KtoC(T):
-    return T - 273.16
+    return T - 273.15
 
 
 def convert_CtoK(T):
-    return T + 273.16
+    return T + 273.15
 
 
 def tetens(t, a: float = 0.611, b: float = 17.502, c: float = 240.97):

@@ -1,12 +1,12 @@
 """
-Tests for eccospectra.data_quality — quality flags, stationarity dataclasses,
+Tests for TaylorSwift.data_quality — quality flags, stationarity dataclasses,
 DataQuality assessment, OutlierDetection, quality_filter, rolling_sigma_filter.
 """
 
 import numpy as np
 import polars as pl
 
-from eccospectra.data_quality import (
+from TaylorSwift.data_quality import (
     QualityFlag,
     StabilityParameters,
     StationarityTest,

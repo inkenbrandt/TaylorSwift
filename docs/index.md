@@ -27,78 +27,23 @@ For development:
 ```bash
 git clone https://github.com/inkenbrandt/TaylorSwift
 cd TaylorSwift
-pip install -e ".[dev]"
-```
-
-## Quick start
-
-```python
-import TaylorSwift as tswift
-
-# --- Configure the site ---
-config = tswift.SiteConfig(
-    z_measurement=3.0,    # measurement height [m]
-    z_canopy=0.3,         # canopy height [m]
-    sampling_freq=20.0,   # Hz
-    averaging_period=30.0 # minutes
-)
-
-# --- Load a raw TOA5 file ---
-df, meta = tswift.read_toa5("path/to/TOA5_mysite.dat")
-
-# --- Process all 30-min intervals ---
-results = tswift.process_file(df, config)
-
-# --- Run quality control ---
-from tswift.qc import run_qc
-results = run_qc(results)
-
-# --- Plot ---
-from tswift.plotting import plot_cospectra
-fig = plot_cospectra(results)
-fig.savefig("cospectra.pdf")
+pip install -e ".[dev,docs]"
 ```
 
 ## Processing pipeline
 
-```
-TOA5 files
-    │
-    ▼  tswift.read_toa5() / tswift.compile_toa5()
-polars.DataFrame
-    │
-    ▼  tswift.process_file()
-    │   ├─ double rotation (mean v = w = 0)
-    │   ├─ linear detrend
-    │   ├─ batched FFT (6 signals)
-    │   ├─ logarithmic frequency binning
-    │   └─ turbulence statistics (u*, L, z/L, H)
-list[SpectralResult]
-    │
-    ├──▶  corrections.apply_spectral_corrections()  (optional)
-    ├──▶  qc.run_qc()
-    └──▶  plotting.plot_cospectra() / plot_spectra() / plot_ogive()
-```
-
-## Module overview
-
-| Module | Contents |
-|---|---|
-| `core` | `SiteConfig`, `SpectralResult`, `process_interval`, `process_file`, `compute_cospectrum`, `rotate_wind`, `log_bin` |
-| `io` | `read_toa5`, `compile_toa5`, `scan_toa5_directory` |
-| `corrections` | `InstrumentConfig`, `ukde_despike`, `despike_dataframe`, transfer functions, `apply_spectral_corrections`, `wpl_correction` |
-| `qc` | `fit_inertial_slope`, `stationarity_test`, `run_qc` |
-| `plotting` | `plot_cospectra`, `plot_spectra`, `plot_ogive`, `plot_summary_timeseries` |
-| `constants` | `SurfaceType`, `Hemisphere`, `QualityThreshold`, `ProcessingConfig`, `ErrorCode`, `get_displacement_height`, `get_roughness_length`, physical constants |
-| `data_quality` | `QualityFlag`, `StabilityParameters`, `StationarityTest`, `DataQuality`, `OutlierDetection`, `quality_filter`, `rolling_sigma_filter` |
-| `ec_polars` | `CalcFlux` — full flux pipeline for IRGASON and KH-20 with Polars/pandas compat |
-
-## Running tests
-
-```bash
-pytest
-# or with coverage:
-pytest --cov=TaylorSwift
+```mermaid
+graph TD
+    A[TOA5 files] -->|tswift.read_toa5 / compile_toa5| B[polars.DataFrame]
+    B -->|tswift.process_file| C[list[SpectralResult]]
+    C --> D[double rotation]
+    C --> E[linear detrend]
+    C --> F[batched FFT]
+    C --> G[logarithmic frequency binning]
+    C --> H[turbulence statistics]
+    C --> I[corrections.apply_spectral_corrections]
+    C --> J[qc.run_qc]
+    C --> K[plotting.plot_cospectra]
 ```
 
 ## References

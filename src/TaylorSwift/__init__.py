@@ -12,18 +12,18 @@ core        – FFT-based spectral / cospectral computation with detrending,
               coordinate rotation, and logarithmic frequency binning.
 io          – Readers for Campbell Scientific TOA5 files and multi-file
               compilation for long time series.
-corrections – Pre-processing despiking (UKDE, Metzger et al. 2012),
-              spectral transfer functions (Massman 2000, Horst 1997),
+corrections – Spectral transfer functions (Massman 2000, Horst 1997),
               high/low frequency corrections, and WPL density correction.
+cleaning    – Pre-processing despiking methods (UKDE, Metzger et al. 2012)
+              and quartile-based filtering.
 plotting    – Publication-quality Kaimal-style spectral plots.
-qc          – Quality-control helpers: inertial-subrange slope fitting,
-              stationarity tests, and diagnostic flags.
+data_quality – Quality-control helpers: inertial-subrange slope fitting,
+              stationarity tests, Foken et al. (2004) quality flags,
+              outlier detection, and rolling sigma filtering.
 constants   – Physical constants, surface-type enumerations, and default
               configuration for eddy covariance calculations.
-data_quality – Foken et al. (2004) quality flags, stationarity and ITC
-              tests, outlier detection, and rolling sigma filtering.
-ec_polars   – High-frequency flux processing pipeline (CalcFlux) with
-              Polars/pandas compatibility and multiple despiking methods.
+compat      – High-frequency flux processing pipeline (CalcFlux) with
+              Polars/pandas compatibility facade.
 """
 
 from .core import (
@@ -41,20 +41,22 @@ from .io import (
 )
 from .corrections import (
     InstrumentConfig as InstrumentConfig,
+    wpl_correction as wpl_correction,
+    apply_spectral_corrections as apply_spectral_corrections,
+    compute_spectral_correction_factor as compute_spectral_correction_factor,
+    enrich_results_with_means as enrich_results_with_means,
+)
+from .cleaning import (
     ukde_despike as ukde_despike,
     polars_ukde_despike as polars_ukde_despike,
     despike_dataframe as despike_dataframe,
-    apply_spectral_corrections as apply_spectral_corrections,
-    compute_spectral_correction_factor as compute_spectral_correction_factor,
-    wpl_correction as wpl_correction,
-    enrich_results_with_means as enrich_results_with_means,
 )
 from .plotting import (
     plot_cospectra as plot_cospectra,
     plot_spectra as plot_spectra,
     plot_ogive as plot_ogive,
 )
-from .qc import (
+from .data_quality import (
     fit_inertial_slope as fit_inertial_slope,
     stationarity_test as stationarity_test,
 )
@@ -75,6 +77,6 @@ from .data_quality import (
     quality_filter as quality_filter,
     rolling_sigma_filter as rolling_sigma_filter,
 )
-from .ec_polars import CalcFlux as CalcFlux
+from .compat import CalcFlux as CalcFlux
 
 __version__ = "0.2.0"
