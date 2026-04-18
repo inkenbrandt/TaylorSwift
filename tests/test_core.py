@@ -1,5 +1,5 @@
 """
-Tests for eccospectra.core — spectral computation, rotation, log-binning,
+Tests for TaylorSwift.core — spectral computation, rotation, log-binning,
 and the full process_interval / process_file pipeline.
 """
 
@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 from datetime import datetime
 
-from eccospectra import SiteConfig, compute_cospectrum, compute_spectrum, rotate_wind, process_interval
-from eccospectra.core import log_bin, SpectralResult
+from TaylorSwift import SiteConfig, compute_cospectrum, compute_spectrum, rotate_wind, process_interval
+from TaylorSwift.core import log_bin, SpectralResult
 
 
 # ---------------------------------------------------------------------------

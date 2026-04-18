@@ -1,5 +1,5 @@
 """
-Tests for eccospectra.io — TOA5 file reading and multi-file compilation.
+Tests for TaylorSwift.io — TOA5 file reading and multi-file compilation.
 
 Uses synthetic in-memory TOA5 files written to a temporary directory so no
 real instrument data is required.
@@ -11,7 +11,7 @@ import pytest
 from pathlib import Path
 from datetime import datetime, timedelta
 
-from eccospectra.io import read_toa5, scan_toa5_directory, compile_toa5
+from TaylorSwift.io import read_toa5, scan_toa5_directory, compile_toa5
 
 
 # ---------------------------------------------------------------------------

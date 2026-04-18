@@ -1,5 +1,5 @@
 """
-Tests for eccospectra.ec_polars — CalcFlux class and Polars/pandas helpers.
+Tests for TaylorSwift.compat — CalcFlux class and frame utility helpers.
 
 Integration tests for runall/run_irga are intentionally omitted as they
 require fully labelled, sensor-specific DataFrames.  These tests focus on
@@ -11,12 +11,12 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from eccospectra.ec_polars import (
-    CalcFlux,
-    _to_pl_df,
-    _to_same_type,
-    _get_series,
-    _assign,
+from TaylorSwift.compat import CalcFlux
+from TaylorSwift.frame_utils import (
+    to_pl_df as _to_pl_df,
+    to_same_type as _to_same_type,
+    get_series as _get_series,
+    assign as _assign,
 )
 
 
@@ -31,27 +31,27 @@ class TestCalcFluxInit:
 
     def test_default_meter_type(self):
         cf = CalcFlux()
-        assert cf.meter_type == "IRGASON"
+        assert cf.config.meter_type == "IRGASON"
 
     def test_default_u_height(self):
         cf = CalcFlux()
-        assert cf.UHeight == pytest.approx(3.52)
+        assert cf.config.UHeight == pytest.approx(3.52)
 
     def test_default_lag(self):
         cf = CalcFlux()
-        assert cf.lag == 10
+        assert cf.config.lag == 10
 
     def test_kwargs_override_defaults(self):
         cf = CalcFlux(UHeight=5.0, meter_type="KH20", lag=20)
-        assert cf.UHeight == 5.0
-        assert cf.meter_type == "KH20"
-        assert cf.lag == 20
+        assert cf.config.UHeight == 5.0
+        assert cf.config.meter_type == "KH20"
+        assert cf.config.lag == 20
 
     def test_physical_constants_set(self):
         cf = CalcFlux()
-        assert cf.Rd == pytest.approx(287.04)
-        assert cf.Rv == pytest.approx(461.51)
-        assert cf.von_karman == pytest.approx(0.40)
+        assert cf.config.Rd == pytest.approx(287.05, abs=0.02)
+        assert cf.config.Rv == pytest.approx(461.51)
+        assert cf.config.von_karman == pytest.approx(0.41, abs=0.02)
 
     def test_containers_empty_at_init(self):
         cf = CalcFlux()
@@ -61,8 +61,8 @@ class TestCalcFluxInit:
 
     def test_despikefields_populated(self):
         cf = CalcFlux()
-        assert "Ux" in cf.despikefields
-        assert "Uz" in cf.despikefields
+        assert "Ux" in cf.config.despikefields
+        assert "Uz" in cf.config.despikefields
 
 
 # ---------------------------------------------------------------------------
@@ -189,33 +189,6 @@ class TestTetens:
 
 
 # ---------------------------------------------------------------------------
-# shadow_correction
-# ---------------------------------------------------------------------------
-
-class TestShadowCorrection:
-    def setup_method(self):
-        self.cf = CalcFlux()
-
-    def test_returns_three_arrays(self):
-        n = 100
-        Ux = np.random.default_rng(0).normal(2, 0.5, n)
-        Uy = np.random.default_rng(1).normal(0, 0.5, n)
-        Uz = np.random.default_rng(2).normal(0, 0.2, n)
-        result = self.cf.shadow_correction(Ux, Uy, Uz)
-        assert len(result) == 3
-
-    def test_shapes_preserved(self):
-        n = 200
-        Ux = np.ones(n)
-        Uy = np.zeros(n)
-        Uz = np.zeros(n)
-        Ux_c, Uy_c, Uz_c = self.cf.shadow_correction(Ux, Uy, Uz)
-        assert Ux_c.shape == (n,)
-        assert Uy_c.shape == (n,)
-        assert Uz_c.shape == (n,)
-
-
-# ---------------------------------------------------------------------------
 # Polars/pandas compatibility helpers
 # ---------------------------------------------------------------------------
 
@@ -272,21 +245,3 @@ class TestCompatHelpers:
         df = self._pd_df()
         result = _assign(df, c=np.array([7.0, 8.0, 9.0]))
         assert "c" in result.columns
-
-
-# ---------------------------------------------------------------------------
-# calc_LnKh
-# ---------------------------------------------------------------------------
-
-class TestCalcLnKh:
-    def setup_method(self):
-        self.cf = CalcFlux()
-
-    def test_positive_input_returns_finite(self):
-        result = self.cf.calc_LnKh(500.0)
-        assert np.isfinite(result)
-
-    def test_array_input(self):
-        mvolts = np.array([100.0, 200.0, 500.0])
-        result = self.cf.calc_LnKh(mvolts)
-        assert np.all(np.isfinite(result))

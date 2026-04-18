@@ -1,11 +1,11 @@
 """
-Tests for eccospectra.constants — physical constants, surface types,
+Tests for TaylorSwift.constants — physical constants, surface types,
 quality thresholds, and roughness helper functions.
 """
 
 import pytest
 
-from eccospectra.constants import (
+from TaylorSwift.constants import (
     K_VON_KARMAN,
     G0,
     R_GAS,

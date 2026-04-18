@@ -73,6 +73,21 @@ class InstrumentConfig:
 
     Default values are for the Campbell Scientific IRGASON (integrated
     open-path sonic anemometer + CO₂/H₂O gas analyser).
+
+    Attributes:
+        sonic_path_length: Path length of the sonic anemometer [m].
+        sonic_path_separation: Separation between horizontal paths [m].
+        irga_path_length: Optical path length of the gas analyser [m].
+        irga_path_diameter: Optical path diameter of the gas analyser [m].
+        sensor_separation_lateral: Lateral separation perpendicular to wind [m].
+        sensor_separation_longitudinal: Longitudinal separation parallel to wind [m].
+        sensor_separation_vertical: Vertical separation [m].
+        tau_sonic_T: Time constant for sonic temperature [s].
+        tau_co2: Time constant for CO₂ sensor response [s].
+        tau_h2o: Time constant for H₂O sensor response [s].
+        tau_T: Time constant for sonic T response [s].
+        irga_type: Type of gas analyser ('open_path' or 'enclosed_path').
+        model: Instrument model name.
     """
 
     # --- Sonic anemometer ---
@@ -575,6 +590,74 @@ def webb_pearman_leuning(
         * (Uz_pV + (pVavg / Tsa) * Uz_Ta)
         / (pCpTsa + lamb * pRatio * pVavg * 0.07)
     )
+
+
+def wpl_correction(
+    Fc_raw: float,
+    Fe_raw: float,
+    H: float,
+    T_mean: float,
+    P_mean: float,
+    co2_mean: float,
+    h2o_mean: float,
+) -> dict:
+    """
+    Webb-Pearman-Leuning (1980) density correction for open-path fluxes.
+
+    Parameters
+    ----------
+    Fc_raw : float
+        Uncorrected CO₂ flux (w'ρc') [mg m⁻² s⁻¹].
+    Fe_raw : float
+        Uncorrected H₂O flux (w'ρv') [g m⁻² s⁻¹].
+    H : float
+        Sensible heat flux [W m⁻²].
+    T_mean : float
+        Mean air temperature [°C].
+    P_mean : float
+        Mean atmospheric pressure [kPa].
+    co2_mean : float
+        Mean CO₂ density [mg m⁻³].
+    h2o_mean : float
+        Mean H₂O density [g m⁻³].
+
+    Returns
+    -------
+    dict with keys 'Fc_wpl', 'Fe_wpl', 'Fc_correction', 'Fe_correction',
+    'mu', and 'sigma'.
+    """
+    Md = MOLAR_MASS['air_dry']
+    Mv = MOLAR_MASS['h2o']
+    mu = Md / Mv
+    Rd = R_SPECIFIC['dry_air']
+    cp = CP_DRY_AIR
+
+    T_K = T_mean + T_ZERO_C
+    P_Pa = P_mean * 1000.0
+
+    rho_v = h2o_mean * 1e-3
+    rho_d = (P_Pa / (Rd * T_K)) - rho_v
+    sigma = rho_v / rho_d if rho_d > 0 else 0.0
+
+    Fe_wpl = (1.0 + mu * sigma) * (
+        Fe_raw + (h2o_mean / T_K) * (H / (rho_d * cp))
+    )
+
+    Fe_raw_kg = Fe_raw * 1e-3
+    Fc_wpl = (
+        Fc_raw
+        + mu * (co2_mean * 1e-6 / rho_d) * Fe_raw_kg * 1e6
+        + (1.0 + mu * sigma) * (co2_mean / T_K) * (H / (rho_d * cp))
+    )
+
+    return {
+        'Fc_wpl': Fc_wpl,
+        'Fe_wpl': Fe_wpl,
+        'Fc_correction': Fc_wpl - Fc_raw,
+        'Fe_correction': Fe_wpl - Fe_raw,
+        'mu': mu,
+        'sigma': sigma,
+    }
 
 
 # ===================================================================

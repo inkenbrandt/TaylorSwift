@@ -1,21 +1,20 @@
 """
-Tests for eccospectra.corrections — despiking, transfer functions, WPL.
+Tests for TaylorSwift.corrections — despiking, transfer functions, WPL.
 """
 
 import numpy as np
 import pytest
 import pandas as pd
 
-from eccospectra.corrections import (
+from TaylorSwift.corrections import (
     InstrumentConfig,
-    ukde_despike,
-    despike_dataframe,
     tf_block_average,
     tf_first_order_response,
     tf_sonic_line_averaging,
     tf_sensor_separation,
     combined_transfer_function,
 )
+from TaylorSwift.cleaning import ukde_despike, despike_dataframe
 
 
 # ---------------------------------------------------------------------------

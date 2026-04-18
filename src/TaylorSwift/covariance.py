@@ -10,7 +10,10 @@ def calc_cov(x, y) -> float:
         return float('nan')
     x = x[mask]
     y = y[mask]
-    return float(np.mean((x - x.mean()) * (y - y.mean())))
+    n = len(x)
+    if n < 2:
+        return float('nan')
+    return float(np.sum((x - x.mean()) * (y - y.mean())) / (n - 1))
 
 
 def calc_MSE(y) -> float:

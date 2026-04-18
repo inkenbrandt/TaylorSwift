@@ -1,7 +1,10 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+import polars as pl
 import statsmodels.api as sm
+from KDEpy import FFTKDE
+from scipy.interpolate import interp1d
 from .frame_utils import rolling_median_centered
 
 
