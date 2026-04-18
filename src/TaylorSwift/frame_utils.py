@@ -48,7 +48,11 @@ def interpolate_bfill_ffill(s):
 def rolling_median_centered(s, win: int):
     if not isinstance(s, pl.Series):
         s = pl.Series(np.asarray(s))
-    return s.rolling_median(window_size=win, center=True).fill_null(strategy="backward").fill_null(strategy="forward")
+    return (
+        s.rolling_median(window_size=win, center=True)
+        .fill_null(strategy="backward")
+        .fill_null(strategy="forward")
+    )
 
 
 def shift(s, n: int):
@@ -64,26 +68,33 @@ def first_last_index_duration(df: pd.DataFrame, unit: str = "D") -> float:
     for name in ("TIMESTAMP", "timestamp", "time", "TIMESTAMP_START", "datetime"):
         if name in df.columns:
             s = get_series(df, name)
-            return (s[-1] - s[0]).dt.total_days() if unit == "D" else (s[-1] - s[0]).dt.seconds()
+            return (
+                (s[-1] - s[0]).dt.total_days()
+                if unit == "D"
+                else (s[-1] - s[0]).dt.seconds()
+            )
     raise ValueError("Could not infer datetime information for duration.")
 
 
 def normalize_input_frame(df, rename_func=None, rename_map=None, ts_col=None):
     import pathlib
+
     if isinstance(df, (str, bytes, pathlib.Path)):
         p = str(df)
-        if p.lower().endswith('.parquet'):
+        if p.lower().endswith(".parquet"):
             df = pd.read_parquet(p)
         else:
             df = pd.read_csv(p)
-    elif 'polars' in type(df).__module__:
+    elif "polars" in type(df).__module__:
         df = df.to_pandas()
     elif not isinstance(df, pd.DataFrame):
-        raise TypeError('df must be a pandas.DataFrame, a polars.DataFrame, or a file path')
+        raise TypeError(
+            "df must be a pandas.DataFrame, a polars.DataFrame, or a file path"
+        )
 
     if ts_col and ts_col in df.columns:
         try:
-            df[ts_col] = pd.to_datetime(df[ts_col], errors='coerce', utc=False)
+            df[ts_col] = pd.to_datetime(df[ts_col], errors="coerce", utc=False)
         except Exception:
             pass
 

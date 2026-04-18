@@ -4,20 +4,22 @@ Physical constants and configuration parameters for eddy covariance calculations
 This module provides:
 1. Physical constants
 2. Meteorological parameters
-3. Configuration defaults
-4. Unit conversion factors
-5. Quality control thresholds
+3. Unit conversion factors
+4. Quality control thresholds
 """
 
+import numpy as np
 from enum import IntEnum
 
 # Physical constants
-K_VON_KARMAN = 0.40  # von Karman constant (dimensionless)
-G0 = 9.80665  # Gravitational acceleration (m/s^2)
-R_GAS = 8.3144598  # Universal gas constant (J/mol/K)
-OMEGA = 7.2921e-5  # Earth's angular velocity (rad/s)
-SIGMA_SB = 5.67e-8  # Stefan-Boltzmann constant (W/m^2/K^4)
-CP_DRY_AIR = 1004.67  # Specific heat capacity of dry air at constant pressure (J/kg/K)
+K_VON_KARMAN = 0.40  # von Karman constant (dimensionless); von_karman
+G0 = 9.80665  # Gravitational acceleration (m/s^2); g
+R_GAS = 8.3144598  # Universal gas constant (J/mol/K); Ru
+OMEGA = 7.2921e-5  # Earth's angular velocity (rad/s); Omega
+SIGMA_SB = 5.67e-8  # Stefan-Boltzmann constant (W/m^2/K^4): Sigma_SB
+CP_DRY_AIR = (
+    1004.67  # Specific heat capacity of dry air at constant pressure (J/kg/K); Cpd
+)
 CP_H2O_GAS = 1850.0  # Specific heat capacity of water vapor (J/kg/K)
 L_SUBLIMATION = 2.834e6  # Latent heat of sublimation (J/kg)
 L_VAPORIZATION = 2.501e6  # Latent heat of vaporization at 0°C (J/kg)
@@ -26,7 +28,7 @@ L_VAPORIZATION = 2.501e6  # Latent heat of vaporization at 0°C (J/kg)
 MOLAR_MASS = {
     "co2": 0.044010,  # CO2 molar mass (kg/mol)
     "h2o": 0.018015,  # H2O molar mass (kg/mol)
-    "air_dry": 0.028964,  # Dry air molar mass (kg/mol)
+    "air_dry": 0.028964,  # Dry air molar mass (kg/mol); md
 }
 
 # Gas constants
@@ -132,63 +134,6 @@ class QualityThreshold:
         "h2o": (0.0, 40.0),  # mmol/mol
         "pressure": (80.0, 110.0),  # kPa
     }
-
-
-# Processing parameters
-class ProcessingConfig:
-    """Default configuration for flux processing"""
-
-    # Time parameters
-    AVERAGING_INTERVAL = 1800  # Default averaging interval (seconds)
-    SUBINTERVAL = 300  # Sub-interval for stationarity test (seconds)
-
-    # Spectral correction parameters
-    FREQ_RESPONSE = {
-        "low_freq_cutoff": 0.0001,  # Hz
-        "high_freq_cutoff": 5.0,  # Hz
-        "num_freq_points": 1000,  # Number of frequency points
-    }
-
-    # Despiking parameters
-    DESPIKE = {
-        "z_threshold": 3.5,  # Z-score threshold for spike detection
-        "window_size": 100,  # Window size for moving statistics
-    }
-
-    # Rotation parameters
-    ROTATION = {
-        "max_rotation_angle": 15.0,  # Maximum rotation angle (degrees)
-        "num_sectors": 36,  # Number of wind sectors for planar fit
-    }
-
-    # Storage flux parameters
-    STORAGE = {
-        "num_heights": 1,  # Number of measurement heights
-        "integration_method": "linear",  # Profile integration method
-    }
-
-    # Webb corrections
-    DENSITY_CORRECTION = {
-        "apply_wpl": True,  # Apply WPL corrections
-        "use_measured_h2o": True,  # Use measured H2O for density corrections
-    }
-
-
-# Plotting parameters
-class PlottingConfig:
-    """Default configuration for plotting"""
-
-    COLORS = {
-        "co2_flux": "#1f77b4",
-        "h2o_flux": "#2ca02c",
-        "heat_flux": "#d62728",
-        "momentum_flux": "#9467bd",
-    }
-
-    FIGURE_SIZE = (10, 6)
-    DPI = 100
-    FONT_SIZE = 12
-    LINE_WIDTH = 1.5
 
 
 # Error codes
@@ -374,3 +319,9 @@ def get_roughness_length(
         return 0.15 * canopy_height
 
     return ROUGHNESS_LENGTH[surface_type]
+
+
+def _calc_L(Ustr: float, Tsa: float, Uz_Ta: float, g: float, kappa: float) -> float:
+    if abs(Uz_Ta) < 1e-12 or Ustr <= 0:
+        return np.inf
+    return -(Ustr**3) * Tsa / (g * kappa * Uz_Ta)

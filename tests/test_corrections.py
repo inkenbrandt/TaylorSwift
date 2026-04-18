@@ -14,18 +14,19 @@ from TaylorSwift.corrections import (
     tf_sensor_separation,
     combined_transfer_function,
 )
-from TaylorSwift.cleaning import ukde_despike, despike_dataframe
+from TaylorSwift.despike import ukde_despike, despike_dataframe
 
 
 # ---------------------------------------------------------------------------
 # InstrumentConfig
 # ---------------------------------------------------------------------------
 
+
 class TestInstrumentConfig:
     def test_defaults_are_irgason(self):
         cfg = InstrumentConfig()
-        assert cfg.model == 'IRGASON'
-        assert cfg.irga_type == 'open_path'
+        assert cfg.model == "IRGASON"
+        assert cfg.irga_type == "open_path"
         assert cfg.sonic_path_length == pytest.approx(0.10)
         assert cfg.irga_path_length == pytest.approx(0.154)
 
@@ -50,6 +51,7 @@ class TestInstrumentConfig:
 # ukde_despike
 # ---------------------------------------------------------------------------
 
+
 class TestUkdeDespike:
     def test_clean_signal_unchanged(self):
         rng = np.random.default_rng(10)
@@ -64,12 +66,12 @@ class TestUkdeDespike:
         signal = rng.normal(0, 1, 1000)
         # Insert obvious spikes
         spike_idx = [100, 300, 700]
-        signal[spike_idx] = 100.0   # extreme outliers
+        signal[spike_idx] = 100.0  # extreme outliers
         cleaned = ukde_despike(signal, prob_threshold=1e-4)
         assert np.isfinite(cleaned).all()
         # Spike positions should be replaced with reasonable values
         for idx in spike_idx:
-            assert abs(cleaned[idx]) < 10.0   # pulled back toward distribution
+            assert abs(cleaned[idx]) < 10.0  # pulled back toward distribution
 
     def test_output_same_length(self):
         signal = np.random.default_rng(12).normal(0, 1, 200)
@@ -107,44 +109,48 @@ class TestUkdeDespike:
 # despike_dataframe
 # ---------------------------------------------------------------------------
 
+
 class TestDespikeDataframe:
     def _make_df(self, n=500):
         rng = np.random.default_rng(15)
-        df = pd.DataFrame({
-            'u': rng.normal(5, 0.3, n),
-            'w': rng.normal(0, 0.1, n),
-            'T': rng.normal(20, 0.5, n),
-        })
-        df.loc[50, 'u'] = 100.0   # spike
+        df = pd.DataFrame(
+            {
+                "u": rng.normal(5, 0.3, n),
+                "w": rng.normal(0, 0.1, n),
+                "T": rng.normal(20, 0.5, n),
+            }
+        )
+        df.loc[50, "u"] = 100.0  # spike
         return df
 
     def test_returns_dataframe(self):
         df = self._make_df()
-        result = despike_dataframe(df, ['u', 'w'])
+        result = despike_dataframe(df, ["u", "w"])
         assert isinstance(result, pd.DataFrame)
 
     def test_original_not_modified(self):
         df = self._make_df()
-        original_u = df['u'].copy()
-        despike_dataframe(df, ['u'])
-        pd.testing.assert_series_equal(df['u'], original_u)
+        original_u = df["u"].copy()
+        despike_dataframe(df, ["u"])
+        pd.testing.assert_series_equal(df["u"], original_u)
 
     def test_spike_cleaned(self):
         df = self._make_df()
-        result = despike_dataframe(df, ['u'])
-        assert abs(result.loc[50, 'u']) < 20.0
+        result = despike_dataframe(df, ["u"])
+        assert abs(result.loc[50, "u"]) < 20.0
 
     def test_missing_column_skipped(self):
         df = self._make_df()
         # Should not raise for a column that doesn't exist
-        result = despike_dataframe(df, ['u', 'nonexistent_col'])
-        assert 'u' in result.columns
-        assert 'nonexistent_col' not in result.columns
+        result = despike_dataframe(df, ["u", "nonexistent_col"])
+        assert "u" in result.columns
+        assert "nonexistent_col" not in result.columns
 
 
 # ---------------------------------------------------------------------------
 # Transfer functions — shape and boundary conditions
 # ---------------------------------------------------------------------------
+
 
 class TestTransferFunctions:
     @pytest.fixture
@@ -184,7 +190,7 @@ class TestTransferFunctions:
 
     def test_first_order_attenuation_increases_with_freq(self, freq):
         tf = tf_first_order_response(freq, tau=0.1)
-        assert np.all(np.diff(tf) <= 0)   # monotone decreasing
+        assert np.all(np.diff(tf) <= 0)  # monotone decreasing
 
     def test_first_order_range(self, freq):
         tf = tf_first_order_response(freq, tau=0.1)
@@ -232,10 +238,13 @@ class TestTransferFunctions:
 
     def test_combined_tf_all_flux_types(self, freq):
         inst = InstrumentConfig()
-        for flux_type in ('wT', 'wu', 'wCO2', 'wH2O'):
+        for flux_type in ("wT", "wu", "wCO2", "wH2O"):
             tf = combined_transfer_function(
-                freq, u_mean=5.0, instrument=inst,
-                averaging_period=30.0, flux_type=flux_type,
+                freq,
+                u_mean=5.0,
+                instrument=inst,
+                averaging_period=30.0,
+                flux_type=flux_type,
             )
             assert tf.shape == freq.shape
             assert np.all(tf >= 0)
@@ -246,8 +255,11 @@ class TestTransferFunctions:
         freq_low = np.logspace(-3, -1, 20)
         inst = InstrumentConfig()
         tf = combined_transfer_function(
-            freq_low, u_mean=5.0, instrument=inst,
-            averaging_period=30.0, flux_type='wT',
+            freq_low,
+            u_mean=5.0,
+            instrument=inst,
+            averaging_period=30.0,
+            flux_type="wT",
         )
         # At f=0.001 Hz the low-freq block average TF is also small —
         # just check the combined TF stays in [0, 1]
