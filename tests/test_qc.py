@@ -5,7 +5,7 @@ Tests for TaylorSwift.qc — inertial slope fitting, stationarity, batch QC.
 import numpy as np
 import pytest
 
-from TaylorSwift.qc import fit_inertial_slope, classify_slope, stationarity_test, run_qc
+from TaylorSwift.data_quality import fit_inertial_slope, classify_slope, stationarity_test, run_qc
 
 
 # ---------------------------------------------------------------------------

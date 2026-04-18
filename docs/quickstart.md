@@ -75,7 +75,7 @@ Each element of `results` is a `SpectralResult` containing:
 
 ```python
 import TaylorSwift as tswift
-from TaylorSwift.qc import run_qc
+from TaylorSwift.data_quality import run_qc
 
 results = run_qc(results)
 
