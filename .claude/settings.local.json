@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from TaylorSwift import pipelines; print\\('import ok'\\)\")",
+      "Bash(PYTHONPATH=src python -c \"from TaylorSwift import pipelines; print\\('ok'\\)\")",
+      "Bash(python -c \"import sys; print\\(sys.prefix\\)\")",
+      "Bash(ls /c/Python*)",
+      "Read(//c/Users/paulinkenbrandt/**)",
+      "Bash(py -c \"import pandas, numpy, polars; print\\('ok'\\)\")",
+      "Bash(py -0)",
+      "Bash(py -3.12 -c \"import pandas, numpy, polars; print\\('ok'\\)\")",
+      "Bash(py -3.12 -c \"import ast; ast.parse\\(open\\('src/TaylorSwift/pipelines.py'\\).read\\(\\)\\); print\\('syntax ok'\\)\")",
+      "Bash(py -3.12 -c \"import ast; ast.parse\\(open\\('src/TaylorSwift/pipelines.py', encoding='utf-8'\\).read\\(\\)\\); print\\('syntax ok'\\)\")",
+      "Bash(py -3.12 -m pip show pandas polars)",
+      "Bash(py -3.12 -m compileall -q src/TaylorSwift/pipelines.py)",
+      "Bash(gh auth *)",
+      "Bash(git config *)"
+    ]
+  }
+}
