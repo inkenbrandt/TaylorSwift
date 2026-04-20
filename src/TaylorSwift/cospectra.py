@@ -1,6 +1,9 @@
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .config import SiteConfig
 
 # ===================================================================
 # Transfer functions
@@ -206,6 +209,31 @@ def tf_sensor_separation(
 # ===================================================================
 # Combined transfer function (Massman 2000 approach)
 # ===================================================================
+_SCALAR_FLUXES = frozenset({"wT", "wCO2", "wH2O"})
+
+_KAIMAL_PARAMS = {
+    "wT": (12.92, 26.7),
+    "wCO2": (12.92, 26.7),
+    "wH2O": (12.92, 26.7),
+    "wu": (9.6, 14.0),
+}
+
+
+def _sensor_tau_for_flux(flux_type: str, instrument: "SiteConfig") -> float:
+    if flux_type == "wT":
+        return instrument.tau_T
+    if flux_type == "wCO2":
+        return instrument.tau_co2
+    if flux_type == "wH2O":
+        return instrument.tau_h2o
+    return 0.0
+
+
+def _validate_flux_type(flux_type: str) -> None:
+    if flux_type not in _KAIMAL_PARAMS:
+        raise ValueError(f"Unknown flux_type: {flux_type}")
+
+
 def _calc_alph_x(UHeight: float, L: float) -> tuple[float, float]:
     """Massman (2000) α, X stability parameters."""
     if not np.isfinite(L) or (UHeight / L) <= 0:
@@ -223,7 +251,7 @@ def _correct_spectral(B: float, alpha: float, V: float) -> float:
 def combined_transfer_function(
     freq: np.ndarray,
     u_mean: float,
-    instrument: InstrumentConfig,
+    instrument: "SiteConfig",
     averaging_period: float = 30.0,
     flux_type: str = "wT",
 ) -> np.ndarray:
@@ -241,7 +269,7 @@ def combined_transfer_function(
         Natural frequency [Hz].
     u_mean : float
         Mean horizontal wind speed [m/s].
-    instrument : InstrumentConfig
+    instrument : SiteConfig
         Instrument parameters.
     averaging_period : float
         Averaging period [minutes].
@@ -253,6 +281,8 @@ def combined_transfer_function(
     np.ndarray
         Combined transfer function T(n) at each frequency.
     """
+    _validate_flux_type(flux_type)
+
     # 1. Low-frequency: block averaging
     T_low = tf_block_average(freq, averaging_period)
 
@@ -261,7 +291,9 @@ def combined_transfer_function(
 
     # 3. High-frequency: sensor-specific
     if flux_type == "wT":
-        T_sensor = tf_first_order_response(freq, instrument.tau_T)
+        T_sensor = tf_first_order_response(
+            freq, _sensor_tau_for_flux(flux_type, instrument)
+        )
         T_path_scalar = np.ones_like(freq)  # sonic T has same path as w
         T_sep = np.ones_like(freq)
 
@@ -273,15 +305,10 @@ def combined_transfer_function(
         )
         T_sep = np.ones_like(freq)
 
-    elif flux_type == "wCO2":
-        T_sensor = tf_first_order_response(freq, instrument.tau_co2)
-        T_path_scalar = tf_scalar_path_averaging(
-            freq, u_mean, instrument.irga_path_length
+    elif flux_type in {"wCO2", "wH2O"}:
+        T_sensor = tf_first_order_response(
+            freq, _sensor_tau_for_flux(flux_type, instrument)
         )
-        T_sep = tf_sensor_separation(freq, u_mean, instrument.sensor_separation_total)
-
-    elif flux_type == "wH2O":
-        T_sensor = tf_first_order_response(freq, instrument.tau_h2o)
         T_path_scalar = tf_scalar_path_averaging(
             freq, u_mean, instrument.irga_path_length
         )
@@ -308,22 +335,16 @@ def kaimal_cospec_model(f_nd, flux_type="wT"):
     frequency f = nz/U.  Used as the "true" cospectral shape for
     computing correction factors.
     """
-    if flux_type in ("wT", "wCO2", "wH2O"):
-        # Massman (2000) Eq. 12 — scalar cospectra
-        # n Co / cov = a f / (1 + b f)^(7/4)
-        # with a = 12.92, b = 26.7 for heat (Kaimal 1972 neutral)
-        return 12.92 * f_nd / (1.0 + 26.7 * f_nd) ** (7.0 / 4.0)
-    elif flux_type == "wu":
-        # Momentum cospectrum (Kaimal 1972)
-        return 9.6 * f_nd / (1.0 + 14.0 * f_nd) ** (7.0 / 4.0)
-    else:
-        return 12.92 * f_nd / (1.0 + 26.7 * f_nd) ** (7.0 / 4.0)
+    if flux_type not in _KAIMAL_PARAMS:
+        flux_type = "wT"
+    a, b = _KAIMAL_PARAMS[flux_type]
+    return a * f_nd / (1.0 + b * f_nd) ** (7.0 / 4.0)
 
 
 def compute_spectral_correction_factor(
     u_mean: float,
     z_eff: float,
-    instrument: InstrumentConfig,
+    instrument: "SiteConfig",
     averaging_period: float = 30.0,
     flux_type: str = "wT",
     n_freqs: int = 10000,
@@ -348,7 +369,7 @@ def compute_spectral_correction_factor(
         Mean wind speed [m/s].
     z_eff : float
         Effective measurement height (z - d) [m].
-    instrument : InstrumentConfig
+    instrument : SiteConfig
         Instrument parameters.
     averaging_period : float
         Averaging period [minutes].
@@ -383,10 +404,10 @@ def compute_spectral_correction_factor(
 
     # Integration in log-frequency space: ∫ Co d(ln f)
     # Numerator: integral of true cospectrum
-    num = np.trapz(Co_model, np.log(f_nd))
+    num = np.trapezoid(Co_model, np.log(f_nd))
 
     # Denominator: integral of attenuated cospectrum
-    den = np.trapz(T * Co_model, np.log(f_nd))
+    den = np.trapezoid(T * Co_model, np.log(f_nd))
 
     if den > 1e-12:
         cf = num / den
@@ -437,8 +458,10 @@ def horst_analytical_correction(
     # Cospectral peak frequency (dimensionless) — neutral stability
     if flux_type == "wu":
         f_peak = 0.085  # Kaimal (1972) momentum
-    else:
+    elif flux_type in _SCALAR_FLUXES:
         f_peak = 0.065  # Kaimal (1972) scalars
+    else:
+        f_peak = 0.065
 
     # Convert to natural frequency
     n_peak = f_peak * u_mean / z_eff
@@ -548,8 +571,8 @@ class SpectralResult:
 
 def apply_spectral_corrections(
     results,
-    site_config,
-    instrument: InstrumentConfig,
+    site_config: "SiteConfig",
+    instrument: "SiteConfig",
     apply_high_freq: bool = True,
     apply_low_freq: bool = True,
     apply_wpl: bool = True,
@@ -565,7 +588,7 @@ def apply_spectral_corrections(
         Output from process_file().
     site_config : SiteConfig
         Station configuration.
-    instrument : InstrumentConfig
+    instrument : SiteConfig
         Instrument parameters.
     apply_high_freq : bool
         Apply high-frequency spectral corrections (default True).
@@ -591,6 +614,10 @@ def apply_spectral_corrections(
     """
     z_eff = site_config.z_eff
 
+    # Imported lazily to avoid requiring correction-stack dependencies
+    # when only spectral utilities are used.
+    from .corrections import wpl_correction
+
     for res in results:
         if not np.isfinite(res.u_mean) or res.u_mean < 0.5:
             continue
@@ -609,16 +636,7 @@ def apply_spectral_corrections(
                 )
             elif method == "horst":
                 # Compute effective time constant for this flux
-                if flux_type == "wT":
-                    tau_eff = instrument.tau_T
-                elif flux_type == "wu":
-                    tau_eff = 0.0
-                elif flux_type == "wCO2":
-                    tau_eff = instrument.tau_co2
-                elif flux_type == "wH2O":
-                    tau_eff = instrument.tau_h2o
-                else:
-                    tau_eff = 0.0
+                tau_eff = _sensor_tau_for_flux(flux_type, instrument)
 
                 # Add path-averaging equivalent time constant
                 # τ_path ≈ l / (2π U) for a path of length l
