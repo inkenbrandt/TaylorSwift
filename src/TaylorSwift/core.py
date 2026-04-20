@@ -37,20 +37,6 @@ from .constants import K_VON_KARMAN, G0
 
 
 # ---------------------------------------------------------------------------
-# Core spectral computation
-# ---------------------------------------------------------------------------
-def _detrend_linear(x: np.ndarray) -> np.ndarray:
-    """Remove a linear trend from *x* (handles NaNs via polyfit)."""
-    n = len(x)
-    t = np.arange(n, dtype=np.float64)
-    mask = np.isfinite(x)
-    if mask.sum() < 2:
-        return x - np.nanmean(x)
-    coeffs = np.polyfit(t[mask], x[mask], 1)
-    return x - np.polyval(coeffs, t)
-
-
-# ---------------------------------------------------------------------------
 # Process a single averaging interval
 # ---------------------------------------------------------------------------
 def process_interval(
