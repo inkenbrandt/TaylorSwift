@@ -152,7 +152,7 @@ def stationarity_test(
     x : np.ndarray
         Scalar or horizontal wind component (detrended).
     fs : float
-        Sampling frequency.
+        Sampling frequency (Hz) of the input time series.
     n_subwindows : int
         Number of equal sub-intervals (default 6 → 5-min windows for 30-min).
 
@@ -164,14 +164,15 @@ def stationarity_test(
         1 = good (<15%), 2 = acceptable (15–30%), 3 = suspect (30–50%),
         4 = bad (>50%).
     """
-    from .core import _detrend_linear
+    from .cospectra import tf_linear_detrend
 
     N = len(w)
     sub_len = N // n_subwindows
+    sample_window = N * fs * 0.0166667  # 1 min in samples for detrending
 
     # Full-interval covariance
-    w_det = _detrend_linear(w)
-    x_det = _detrend_linear(x)
+    w_det = tf_linear_detrend(w, sample_window)
+    x_det = tf_linear_detrend(x, sample_window)
     cov_full = np.nanmean(w_det * x_det)
 
     if abs(cov_full) < 1e-12:
@@ -182,8 +183,8 @@ def stationarity_test(
     for i in range(n_subwindows):
         i0 = i * sub_len
         i1 = i0 + sub_len
-        ws = _detrend_linear(w[i0:i1])
-        xs = _detrend_linear(x[i0:i1])
+        ws = tf_linear_detrend(w[i0:i1], sample_window)
+        xs = tf_linear_detrend(x[i0:i1], sample_window)
         sub_covs.append(np.nanmean(ws * xs))
 
     cov_sub_mean = np.mean(sub_covs)
