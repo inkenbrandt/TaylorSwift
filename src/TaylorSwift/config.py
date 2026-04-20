@@ -1,6 +1,35 @@
+"""Configuration models used across spectral and flux-processing pipelines."""
+
 from dataclasses import dataclass, field
-from typing import Optional
 import numpy as np
+
+from .constants import CP_DRY_AIR, G0, K_VON_KARMAN, MOLAR_MASS, R_GAS, R_SPECIFIC
+
+__all__ = [
+    "FluxConfig",
+    "SiteConfig",
+    "InstrumentConfig",
+    "ProcessingConfig",
+    "PlottingConfig",
+]
+
+_DEFAULT_DESPIKE_FIELDS = ["Ux", "Uy", "Uz", "Ts", "volt_KH20", "Pr", "Rh", "pV"]
+
+_DEFAULT_PARAMETERS = {
+    "Ea": ["Actual Vapor Pressure", "kPa"],
+    "LnKH": ["Natural Log of Krypton Hygrometer Output", "ln(mV)"],
+    "Pr": ["Air Pressure", "Pa"],
+    "Ta": ["Air Temperature", "K"],
+    "Ts": ["Sonic Temperature", "K"],
+    "Ux": ["X Component of Wind Speed", "m/s"],
+    "Uy": ["Y Component of Wind Speed", "m/s"],
+    "Uz": ["Z Component of Wind Speed", "m/s"],
+    "E": ["Vapor Pressure", "kPa"],
+    "Q": ["Specific Humidity", "unitless"],
+    "pV": ["Water Vapor Density", "kg/m^3"],
+    "Sd": ["Entropy of Dry Air", "J/K"],
+    "Tsa": ["Absolute Air Temperature Derived from Sonic Temperature", "K"],
+}
 
 
 @dataclass
@@ -10,15 +39,19 @@ class FluxConfig:
     UHeight: float = 3.52
     PathDist_U: float = 0.0
     lag: int = 10
-    Rv: float = 461.51
-    Rd: float = 287.05
+    Rv: float = R_SPECIFIC["water_vapor"]
+    Rd: float = R_SPECIFIC["dry_air"]
+    Ru: float = R_GAS
+    Cpd: float = CP_DRY_AIR
+    g: float = G0
+    von_karman: float = K_VON_KARMAN
     Co: float = 0.21
     Mo: float = 0.032
     Cpw: float = 1952.0
     Cw: float = 4218.0
-    epsilon: float = 18.016 / 28.97
+    epsilon: float = MOLAR_MASS["h2o"] / MOLAR_MASS["air_dry"]
 
-    MU_WPL: float = 28.97 / 18.016
+    MU_WPL: float = MOLAR_MASS["air_dry"] / MOLAR_MASS["h2o"]
 
     XKH20: float = 1.412
     XKwC1: float = -0.152214126
@@ -30,25 +63,11 @@ class FluxConfig:
     direction_bad_max: float = 360.0
 
     despikefields: list[str] = field(
-        default_factory=lambda: ["Ux", "Uy", "Uz", "Ts", "volt_KH20", "Pr", "Rh", "pV"]
+        default_factory=lambda: list(_DEFAULT_DESPIKE_FIELDS)
     )
 
     parameters: dict[str, list[str]] = field(
-        default_factory=lambda: {
-            "Ea": ["Actual Vapor Pressure", "kPa"],
-            "LnKH": ["Natural Log of Krypton Hygrometer Output", "ln(mV)"],
-            "Pr": ["Air Pressure", "Pa"],
-            "Ta": ["Air Temperature", "K"],
-            "Ts": ["Sonic Temperature", "K"],
-            "Ux": ["X Component of Wind Speed", "m/s"],
-            "Uy": ["Y Component of Wind Speed", "m/s"],
-            "Uz": ["Z Component of Wind Speed", "m/s"],
-            "E": ["Vapor Pressure", "kPa"],
-            "Q": ["Specific Humidity", "unitless"],
-            "pV": ["Water Vapor Density", "kg/m^3"],
-            "Sd": ["Entropy of Dry Air", "J/K"],
-            "Tsa": ["Absolute Air Temperature Derived from Sonic Temperature", "K"],
-        }
+        default_factory=lambda: {k: list(v) for k, v in _DEFAULT_PARAMETERS.items()}
     )
 
 
@@ -81,8 +100,8 @@ class SiteConfig:
 
     z_measurement: float = 3.0  # measurement height [m]
     z_canopy: float = 0.3  # canopy height [m]
-    d: Optional[float] = None  # displacement height [m]  (default: 2/3 * z_canopy)
-    z0: Optional[float] = None  # roughness length [m]     (default: 0.1 * z_canopy)
+    d: float | None = None  # displacement height [m]  (default: 2/3 * z_canopy)
+    z0: float | None = None  # roughness length [m]     (default: 0.1 * z_canopy)
     latitude: float = 0.0  # site latitude [deg]
     longitude: float = 0.0  # site longitude [deg]
     sampling_freq: float = 20.0  # Hz
@@ -137,6 +156,10 @@ class SiteConfig:
     def z_eff(self) -> float:
         """Effective measurement height above displacement height."""
         return self.z_measurement - self.d  # type: ignore
+
+
+# Backward-compatible alias: instrument parameters are represented by SiteConfig.
+InstrumentConfig = SiteConfig
 
 
 # Processing parameters
