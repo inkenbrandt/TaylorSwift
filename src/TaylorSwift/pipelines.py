@@ -21,10 +21,17 @@ import numpy as np
 import pandas as pd
 
 from . import covariance, despike, thermo
+from .constants import _calc_L
 from .config import FluxConfig
-from .corrections import webb_pearman_leuning
+from .corrections import webb_pearman_leuning, shadow_correction
+from .cospectra import _correct_spectral, _calc_alph_x
 from .frame_utils import normalize_input_frame
-from .wind import determine_wind_dir
+from .rotations import (
+    determine_wind_dir,
+    coord_rotation,
+    rotate_velocities,
+    rotate_covariances,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +121,7 @@ def _compute_fluxes(df: pd.DataFrame, config: FluxConfig) -> pd.Series:
     Uz_raw = df["Uz"].to_numpy(dtype=float)
 
     # 1. Remove CSAT shadow effect.
-    Ux, Uy, Uz = _shadow_correction(Ux_raw, Uy_raw, Uz_raw)
+    Ux, Uy, Uz = shadow_correction(Ux_raw, Uy_raw, Uz_raw)
     df["Ux"], df["Uy"], df["Uz"] = Ux, Uy, Uz
 
     Ts = df["Ts"].to_numpy(dtype=float)
@@ -140,8 +147,8 @@ def _compute_fluxes(df: pd.DataFrame, config: FluxConfig) -> pd.Series:
     covar["Ux-Uy"] = _max_cov_value(Ux, Uy, lag)
 
     # 3. Coordinate rotation + rotated-frame statistics.
-    cosv, sinv, sinTheta, cosTheta, Uxy, Uxyz = _coord_rotation(Ux, Uy, Uz)
-    Uxr, Uyr, Uzr = _rotate_velocities(Ux, Uy, Uz, cosv, sinv, sinTheta, cosTheta)
+    cosv, sinv, sinTheta, cosTheta, Uxy, Uxyz = coord_rotation(Ux, Uy, Uz)
+    Uxr, Uyr, Uzr = rotate_velocities(Ux, Uy, Uz, cosv, sinv, sinTheta, cosTheta)
     errvals = {
         "Ux": covariance.calc_MSE(Uxr),
         "Uy": covariance.calc_MSE(Uyr),
@@ -149,7 +156,7 @@ def _compute_fluxes(df: pd.DataFrame, config: FluxConfig) -> pd.Series:
         "Q": covariance.calc_MSE(Q),
     }
 
-    covar = _rotate_covariances(covar, errvals, cosv, sinv, sinTheta, cosTheta)
+    covar = rotate_covariances(covar, errvals, cosv, sinv, sinTheta, cosTheta)
     Uxy_Uz = covar["Uxy-Uz"]
     Ustr = float(np.sqrt(Uxy_Uz)) if Uxy_Uz > 0 else 0.0
 
