@@ -17,19 +17,22 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from TaylorSwift.io import read_toa5
 from TaylorSwift.core import (
     SiteConfig,
+    rotate_wind,
+    process_interval,
+)
+
+from TaylorSwift.cospectra import (
     compute_cospectrum,
     compute_spectrum,
     log_bin,
-    rotate_wind,
-    process_interval,
 )
 
 
 def validate_basic_functions():
     """Test basic spectral computation functions."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TESTING BASIC SPECTRAL FUNCTIONS")
-    print("="*70)
+    print("=" * 70)
 
     # Generate synthetic data
     n = 4096
@@ -96,9 +99,9 @@ def validate_basic_functions():
 
 def validate_wind_rotation():
     """Test wind coordinate rotation."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TESTING WIND ROTATION")
-    print("="*70)
+    print("=" * 70)
 
     n = 1000
     rng = np.random.default_rng(43)
@@ -135,8 +138,10 @@ def validate_wind_rotation():
 
     # Test 3: Speed should be preserved (rotation preserves magnitude)
     print(f"\n[TEST 3] Wind speed preserved by rotation")
-    speed_before = np.sqrt(np.mean(u)**2 + np.mean(v)**2 + np.mean(w)**2)
-    speed_after = np.sqrt(np.mean(u_rot)**2 + np.mean(v_rot)**2 + np.mean(w_rot)**2)
+    speed_before = np.sqrt(np.mean(u) ** 2 + np.mean(v) ** 2 + np.mean(w) ** 2)
+    speed_after = np.sqrt(
+        np.mean(u_rot) ** 2 + np.mean(v_rot) ** 2 + np.mean(w_rot) ** 2
+    )
     ratio = speed_after / speed_before if speed_before > 0 else 0
     print(f"  Speed before: {speed_before:.4f} m/s")
     print(f"  Speed after:  {speed_after:.4f} m/s")
@@ -151,9 +156,9 @@ def validate_wind_rotation():
 
 def validate_on_real_data():
     """Test process_interval on real TOA5 data."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TESTING ON REAL DATA (TOA5 FILE)")
-    print("="*70)
+    print("=" * 70)
 
     # Find a .dat file
     data_dir = Path(__file__).parent / "examples" / "data"
@@ -168,20 +173,34 @@ def validate_on_real_data():
     print(f"\nLoading: {dat_file.name}")
 
     try:
-        df = read_toa5(dat_file, parse_dates=True, drop_diagnostics=True)
+        df = read_toa5(dat_file, parse_dates=True, drop_diagnostics=True)[0]
         print(f"  ✓ Loaded {len(df)} records")
         print(f"  Columns: {df.columns}")
 
         # Check for required columns
+        df = df.rename(
+            {
+                "Ux": "u",
+                "Uy": "v",
+                "Uz": "w",
+                "T_SONIC": "T_sonic",
+                "CO2_density": "CO2",
+                "H2O_density": "H2O",
+            }
+        )  # Strip spaces
         required = ["u", "v", "w", "T_sonic", "CO2", "H2O"]
-        available = [col for col in required if col in df.columns or col.lower() in df.columns]
+        available = [
+            col for col in required if col in df.columns or col.lower() in df.columns
+        ]
         print(f"  Available wind/scalar columns: {available}")
 
         if len(available) >= 3:
             print(f"  ✓ Sufficient data to test process_interval")
             return True
         else:
-            print(f"  ⚠ Insufficient columns for full test (need at least 3 of {required})")
+            print(
+                f"  ⚠ Insufficient columns for full test (need at least 3 of {required})"
+            )
             return True
 
     except Exception as e:
@@ -191,9 +210,9 @@ def validate_on_real_data():
 
 def main():
     """Run all validation tests."""
-    print("\n" + "#"*70)
+    print("\n" + "#" * 70)
     print("COSPECTRAL ANALYSIS VALIDATION SUITE")
-    print("#"*70)
+    print("#" * 70)
 
     results = []
 
@@ -202,6 +221,7 @@ def main():
     except Exception as e:
         print(f"\n✗ Basic functions test failed: {e}")
         import traceback
+
         traceback.print_exc()
         results.append(("Basic Functions", False))
 
@@ -210,6 +230,7 @@ def main():
     except Exception as e:
         print(f"\n✗ Wind rotation test failed: {e}")
         import traceback
+
         traceback.print_exc()
         results.append(("Wind Rotation", False))
 
@@ -218,19 +239,20 @@ def main():
     except Exception as e:
         print(f"\n✗ Real data test failed: {e}")
         import traceback
+
         traceback.print_exc()
         results.append(("Real Data", False))
 
     # Summary
-    print("\n" + "#"*70)
+    print("\n" + "#" * 70)
     print("VALIDATION SUMMARY")
-    print("#"*70)
+    print("#" * 70)
     for name, passed in results:
         status = "✓ PASS" if passed else "✗ FAIL"
         print(f"{status:8} {name}")
 
     all_passed = all(p for _, p in results)
-    print("#"*70)
+    print("#" * 70)
     if all_passed:
         print("✓ ALL VALIDATIONS PASSED")
         return 0

@@ -11,6 +11,41 @@ This module provides:
 import numpy as np
 from enum import IntEnum
 
+__all__ = [
+    # Physical constants
+    "K_VON_KARMAN",
+    "G0",
+    "R_GAS",
+    "OMEGA",
+    "SIGMA_SB",
+    "CP_DRY_AIR",
+    "CP_H2O_GAS",
+    "L_SUBLIMATION",
+    "L_VAPORIZATION",
+    # Gas properties and constants
+    "MOLAR_MASS",
+    "R_SPECIFIC",
+    # Temperature
+    "T_ZERO_C",
+    "T_TRIPLE_POINT",
+    # Pressure and density
+    "P_REFERENCE",
+    "RHO_AIR_STP",
+    # Surface roughness
+    "SurfaceType",
+    "ROUGHNESS_LENGTH",
+    "DISPLACEMENT_RATIO",
+    "get_displacement_height",
+    "get_roughness_length",
+    # Hemisphere
+    "Hemisphere",
+    # Quality control
+    "QualityThreshold",
+    "ErrorCode",
+    # Unit conversion
+    "UNIT_CONVERSION",
+]
+
 # Physical constants
 K_VON_KARMAN = 0.40  # von Karman constant (dimensionless); von_karman
 G0 = 9.80665  # Gravitational acceleration (m/s^2); g
@@ -99,19 +134,18 @@ DISPLACEMENT_RATIO = {
 class QualityThreshold:
     """Default thresholds for quality control"""
 
-    # Steady state test thresholds
-    RN_THRESHOLD = {
-        "high_quality": 0.3,  # Relative non-stationarity threshold for high quality
-        "moderate_quality": 0.7,  # Threshold for moderate quality
-        "low_quality": 2.0,  # Threshold for low quality
-    }
-
-    # ITC (Integral Turbulence Characteristics) thresholds
-    ITC_THRESHOLD = {
+    # Standard quality rating thresholds (used for multiple metrics)
+    _QUALITY_LEVELS = {
         "high_quality": 0.3,
         "moderate_quality": 0.7,
         "low_quality": 2.0,
     }
+
+    # Steady state test thresholds (uses standard quality levels)
+    RN_THRESHOLD = _QUALITY_LEVELS
+
+    # ITC (Integral Turbulence Characteristics) thresholds (uses standard quality levels)
+    ITC_THRESHOLD = _QUALITY_LEVELS
 
     # Wind direction thresholds (degrees from sonic orientation)
     WIND_DIRECTION = {
@@ -119,8 +153,9 @@ class QualityThreshold:
         "acceptable": (-170, 170),  # Acceptable wind direction range
     }
 
-    # Signal strength thresholds
+    # Signal strength thresholds (minimum acceptable values)
     SIGNAL_STRENGTH = {
+        "default": 0.7,  # Default minimum signal strength
         "co2": 0.7,  # Minimum CO2 signal strength
         "h2o": 0.7,  # Minimum H2O signal strength
     }
@@ -223,7 +258,7 @@ def get_displacement_height(
 
     Examples
     --------
-    >>> from mymodule.roughness import SurfaceType, get_displacement_height
+    >>> from TaylorSwift.constants import SurfaceType, get_displacement_height
     >>> get_displacement_height(SurfaceType.FOREST, canopy_height=20.0)
     13.0   # (k_d = 0.65)
     >>> get_displacement_height(SurfaceType.GRASS, canopy_height=0.15)
@@ -300,7 +335,7 @@ def get_roughness_length(
 
     Examples
     --------
-    >>> from mymodule.roughness import SurfaceType, get_roughness_length
+    >>> from TaylorSwift.constants import SurfaceType, get_roughness_length
     >>> get_roughness_length(SurfaceType.CROP, canopy_height=2.0)
     0.3
     >>> get_roughness_length(SurfaceType.URBAN, canopy_height=10.0)

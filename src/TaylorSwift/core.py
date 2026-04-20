@@ -20,8 +20,6 @@ Stull, R.B. (1988). An Introduction to Boundary Layer Meteorology. Kluwer.
 
 import numpy as np
 import polars as pl
-from dataclasses import dataclass, field
-from typing import Optional
 from datetime import timedelta
 
 from .config import SiteConfig
@@ -29,25 +27,28 @@ from .rotations import rotate_wind
 from .cospectra import (
     log_bin,
     SpectralResult,
-    tf_block_average,
-    tf_first_order_response,
-    tf_sonic_line_averaging,
 )
 from .constants import K_VON_KARMAN, G0
 
 
 # ---------------------------------------------------------------------------
-# Core spectral computation
+# Internal helpers
 # ---------------------------------------------------------------------------
-def _detrend_linear(x: np.ndarray) -> np.ndarray:
-    """Remove a linear trend from *x* (handles NaNs via polyfit)."""
-    n = len(x)
-    t = np.arange(n, dtype=np.float64)
-    mask = np.isfinite(x)
-    if mask.sum() < 2:
-        return x - np.nanmean(x)
-    coeffs = np.polyfit(t[mask], x[mask], 1)
-    return x - np.polyval(coeffs, t)
+def _detrend_linear(arr: np.ndarray) -> np.ndarray:
+    """NaN-safe linear detrend of a 1-D array."""
+    out = arr.copy()
+    valid = np.isfinite(arr)
+    if valid.sum() < 2:
+        return out
+    t = np.arange(len(arr), dtype=np.float64)
+    t_v = t[valid]
+    a_v = arr[valid]
+    t_c = t_v - t_v.mean()
+    t_var = float(np.dot(t_c, t_c))
+    slope = float(np.dot(t_c, a_v - a_v.mean())) / t_var
+    intercept = a_v.mean() - slope * t_v.mean()
+    out -= slope * t + intercept
+    return out
 
 
 # ---------------------------------------------------------------------------
