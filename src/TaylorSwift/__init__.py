@@ -8,8 +8,8 @@ __version__ = "0.2.0"
 
 _EXPORTS = {
     # Core spectral computation
-    "compute_cospectrum": (".core", "compute_cospectrum"),
-    "compute_spectrum": (".core", "compute_spectrum"),
+    "compute_cospectrum": (".cospectra", "compute_cospectrum"),
+    "compute_spectrum": (".cospectra", "compute_spectrum"),
     "rotate_wind": (".core", "rotate_wind"),
     "process_interval": (".core", "process_interval"),
     "process_file": (".core", "process_file"),

@@ -516,6 +516,9 @@ class SpectralResult:
         ogive_wu: Cumulative cospectrum for w'u' (high to low frequency).
         ogive_wCO2: Cumulative cospectrum for w'CO2' (high to low frequency).
         ogive_wH2O: Cumulative cospectrum for w'H2O' (high to low frequency).
+        co2_mean: Mean CO₂ density [mg m⁻³], populated by enrich_results_with_means().
+        h2o_mean: Mean H₂O density [g m⁻³], populated by enrich_results_with_means().
+        P_mean: Mean atmospheric pressure [kPa], populated by enrich_results_with_means().
         qc_flags: Dictionary of quality control flags and intermediate results.
     """
 
@@ -564,6 +567,11 @@ class SpectralResult:
     ogive_wu: np.ndarray = field(default_factory=lambda: np.array([]))
     ogive_wCO2: np.ndarray = field(default_factory=lambda: np.array([]))
     ogive_wH2O: np.ndarray = field(default_factory=lambda: np.array([]))
+
+    # Mean scalar densities (filled by enrich_results_with_means, needed for WPL)
+    co2_mean: float = np.nan
+    h2o_mean: float = np.nan
+    P_mean: float = np.nan
 
     # Quality flags (filled by qc module)
     qc_flags: dict = field(default_factory=dict)

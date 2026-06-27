@@ -20,12 +20,12 @@ from TaylorSwift.constants import (
     ROUGHNESS_LENGTH,
     DISPLACEMENT_RATIO,
     QualityThreshold,
-    ProcessingConfig,
     ErrorCode,
     UNIT_CONVERSION,
     get_displacement_height,
     get_roughness_length,
 )
+from TaylorSwift.config import ProcessingConfig
 
 
 # ---------------------------------------------------------------------------

@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import pandas as pd
 
-from TaylorSwift.corrections import (
-    InstrumentConfig,
+from TaylorSwift.config import InstrumentConfig
+from TaylorSwift.cospectra import (
     tf_block_average,
     tf_first_order_response,
     tf_sonic_line_averaging,

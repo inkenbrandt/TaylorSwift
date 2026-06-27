@@ -2,7 +2,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import polars as pl
-import statsmodels.api as sm
 from KDEpy import FFTKDE
 from scipy.interpolate import interp1d
 from .frame_utils import rolling_median_centered
@@ -36,6 +35,8 @@ def despike_ewma_fb(
 def despike_med_mod(
     df_column: pd.Series, win: int = 800, fill_na: bool = True, addNoise: bool = False
 ) -> pd.Series:
+    import statsmodels.api as sm
+
     np_spikey = np.array(df_column)
     y = df_column.interpolate().bfill().ffill()
     x = rolling_median_centered(df_column, win).to_pandas()

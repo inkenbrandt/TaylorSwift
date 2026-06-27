@@ -14,7 +14,9 @@
       "Bash(py -3.12 -m pip show pandas polars)",
       "Bash(py -3.12 -m compileall -q src/TaylorSwift/pipelines.py)",
       "Bash(gh auth *)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(python -m pytest --collect-only -q)",
+      "Bash(python -m pip install -e \".[dev]\" -q)"
     ]
   }
 }

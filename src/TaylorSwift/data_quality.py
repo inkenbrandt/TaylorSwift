@@ -30,11 +30,32 @@ Vickers, D. & Mahrt, L. (1997). Quality control analysis of flux data.
     J. Atmos. Ocean. Technol., 14, 512–526.
 """
 
-from typing import Tuple, Optional, Union, Dict
 import numpy as np
 from dataclasses import dataclass
 from enum import IntEnum
 import polars as pl
+
+
+# ---------------------------------------------------------------------------
+# Internal helper
+# ---------------------------------------------------------------------------
+def _detrend_linear(arr: np.ndarray) -> np.ndarray:
+    """NaN-safe linear detrend of a 1-D array."""
+    out = arr.copy().astype(np.float64)
+    valid = np.isfinite(arr)
+    if valid.sum() < 2:
+        return out
+    t = np.arange(len(arr), dtype=np.float64)
+    t_v = t[valid]
+    a_v = arr[valid]
+    t_c = t_v - t_v.mean()
+    t_var = float(np.dot(t_c, t_c))
+    if t_var == 0:
+        return out - a_v.mean()
+    slope = float(np.dot(t_c, a_v - a_v.mean())) / t_var
+    intercept = a_v.mean() - slope * t_v.mean()
+    out -= slope * t + intercept
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -164,27 +185,24 @@ def stationarity_test(
         1 = good (<15%), 2 = acceptable (15–30%), 3 = suspect (30–50%),
         4 = bad (>50%).
     """
-    from .cospectra import tf_linear_detrend
-
     N = len(w)
     sub_len = N // n_subwindows
-    sample_window = N * fs * 0.0166667  # 1 min in samples for detrending
 
-    # Full-interval covariance
-    w_det = tf_linear_detrend(w, sample_window)
-    x_det = tf_linear_detrend(x, sample_window)
+    # Full-interval covariance (linearly detrended)
+    w_det = _detrend_linear(w)
+    x_det = _detrend_linear(x)
     cov_full = np.nanmean(w_det * x_det)
 
     if abs(cov_full) < 1e-12:
         return np.nan, 4
 
-    # Sub-interval covariances
+    # Sub-interval covariances (each sub-window independently detrended)
     sub_covs = []
     for i in range(n_subwindows):
         i0 = i * sub_len
         i1 = i0 + sub_len
-        ws = tf_linear_detrend(w[i0:i1], sample_window)
-        xs = tf_linear_detrend(x[i0:i1], sample_window)
+        ws = _detrend_linear(w[i0:i1])
+        xs = _detrend_linear(x[i0:i1])
         sub_covs.append(np.nanmean(ws * xs))
 
     cov_sub_mean = np.mean(sub_covs)
@@ -423,7 +441,7 @@ class DataQuality:
 
     def _calculate_integral_turbulence(
         self, stability: StabilityParameters
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """
         Calculate integral turbulence characteristics.
 
@@ -553,9 +571,9 @@ class DataQuality:
         self,
         stability: StabilityParameters,
         stationarity: StationarityTest,
-        wind_direction: Optional[float] = None,
+        wind_direction: float | None = None,
         flux_type: str = "momentum",
-    ) -> Dict[str, Union[int, float]]:
+    ) -> dict[str, int | float]:
         """
         Perform comprehensive data quality assessment.
 
@@ -619,6 +637,122 @@ class DataQuality:
             9: "Very poor quality (discard)",
         }
         return labels.get(flag, "Unknown")
+
+
+class OutlierDetection:
+    """Statistical outlier detection utilities."""
+
+    @staticmethod
+    def mad_outliers(x: np.ndarray, threshold: float = 3.5) -> np.ndarray:
+        """
+        Detect outliers using the Median Absolute Deviation (MAD).
+
+        Returns a boolean mask where True indicates an outlier.
+        Uses the modified Z-score: 0.6745 * |x - median| / MAD > threshold.
+        """
+        x = np.asarray(x, dtype=float)
+        med = np.nanmedian(x)
+        mad = np.nanmedian(np.abs(x - med))
+        if mad == 0:
+            return np.zeros(len(x), dtype=bool)
+        modified_z = 0.6745 * np.abs(x - med) / mad
+        return modified_z > threshold
+
+    @staticmethod
+    def spike_detection(
+        x: np.ndarray,
+        window_size: int = 51,
+        z_threshold: float = 4.0,
+    ) -> np.ndarray:
+        """
+        Detect spikes using a rolling-window z-score test.
+
+        Returns a boolean mask where True indicates a spike.
+        """
+        import pandas as pd
+
+        x = np.asarray(x, dtype=float)
+        s = pd.Series(x)
+        roll_mean = s.rolling(window_size, center=True, min_periods=1).mean()
+        roll_std = s.rolling(window_size, center=True, min_periods=1).std()
+        with np.errstate(divide="ignore", invalid="ignore"):
+            z = np.abs((s - roll_mean) / roll_std)
+        return np.nan_to_num(z.to_numpy(), nan=0.0) > z_threshold
+
+
+def rolling_sigma_filter(
+    df,
+    value_col: str = "Uz",
+    period: str = "10s",
+    sigma: float = 3.0,
+    output_col: str | None = None,
+    keep_stats: bool = False,
+):
+    """
+    Null-out values that deviate more than *sigma* standard deviations from a
+    rolling mean computed over the preceding time window of *period*.
+
+    The rolling statistics are computed from the window *before* each sample
+    (``closed="left"``), so a spike cannot inflate its own reference mean and
+    standard deviation — making it reliably detectable at realistic thresholds.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Must contain a ``TIMESTAMP`` (Datetime) column and *value_col*.
+    value_col : str
+        Column to filter.
+    period : str
+        Rolling window duration, e.g. ``'10s'``, ``'5m'``.
+    sigma : float
+        Number of standard deviations beyond which a value is flagged.
+    output_col : str, optional
+        Name for the filtered output column.  Defaults to
+        ``{value_col}_filtered``.
+    keep_stats : bool
+        If ``True``, keep the rolling mean and std columns in the output.
+
+    Returns
+    -------
+    pl.DataFrame
+    """
+    if output_col is None:
+        output_col = f"{value_col}_filtered"
+
+    roll_mean_col = f"{value_col}_roll_mean"
+    roll_std_col = f"{value_col}_roll_std"
+
+    # Sort by timestamp (required for Polars rolling)
+    out = df.sort("TIMESTAMP")
+
+    # Backward-looking window that excludes the current row (closed="left").
+    # This prevents a spike from contaminating its own reference statistics,
+    # ensuring it is detectable at the requested sigma threshold.
+    roll = (
+        out.rolling(index_column="TIMESTAMP", period=period, closed="left")
+        .agg([
+            pl.col(value_col).mean().alias(roll_mean_col),
+            pl.col(value_col).std().alias(roll_std_col),
+        ])
+    )
+
+    out = out.join(roll, on="TIMESTAMP", how="left")
+
+    out = out.with_columns(
+        pl.when(
+            pl.col(roll_std_col).is_null()
+            | (pl.col(roll_std_col) <= 0)
+            | ((pl.col(value_col) - pl.col(roll_mean_col)).abs() <= sigma * pl.col(roll_std_col))
+        )
+        .then(pl.col(value_col))
+        .otherwise(None)
+        .alias(output_col)
+    )
+
+    if not keep_stats:
+        out = out.drop([roll_mean_col, roll_std_col])
+
+    return out
 
 
 def quality_filter(
