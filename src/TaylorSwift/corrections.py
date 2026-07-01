@@ -54,11 +54,7 @@ Metzger, S., Junkermann, W., Mauder, M., Beyrich, F., Butterbach-Bahl, K.,
 """
 
 import numpy as np
-from dataclasses import dataclass
 import polars as pl
-import pandas as pd
-from KDEpy import FFTKDE
-from scipy.interpolate import interp1d
 
 from .constants import MOLAR_MASS, R_SPECIFIC, CP_DRY_AIR, T_ZERO_C
 
