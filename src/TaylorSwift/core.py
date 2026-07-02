@@ -28,6 +28,7 @@ from .constants import G0, K_VON_KARMAN
 from .cospectra import log_bin
 from .results import SpectralResult
 from .rotations import rotate_wind
+from .screening import ScreeningConfig, vickers_mahrt_screen
 
 
 # ---------------------------------------------------------------------------
@@ -64,15 +65,20 @@ def process_interval(
     timestamp_start=None,
     timestamp_end=None,
     bins_per_decade: int = 20,
+    screening_config: ScreeningConfig | None = None,
 ) -> SpectralResult:
     """
     Full cospectral analysis for one averaging interval.
 
-    Steps: quality screen → double rotation → detrend → FFT cospectra →
-    log-bin → normalise → compute turbulence statistics.
+    Steps: raw-data screening → NaN screen → double rotation → detrend → FFT
+    cospectra → log-bin → normalise → compute turbulence statistics.
 
-    Intervals with >5% NaN in wind data get `qc_flags['too_many_nans'] = True`
-    and empty arrays.
+    Vickers & Mahrt (1997) raw-data screening runs first on the raw signals and
+    records diagnostic flags (spike counts, amplitude resolution, dropouts,
+    absolute limits, skewness/kurtosis) into ``qc_flags`` under ``vm97_*`` keys;
+    it is *diagnostic only* and never discards the interval on its own.
+    Intervals with >5% NaN in wind data still short-circuit with
+    `qc_flags['too_many_nans'] = True` and empty spectra.
 
     Parameters
     ----------
@@ -90,6 +96,10 @@ def process_interval(
         Timestamps bounding the interval.
     bins_per_decade : int
         Log-binning resolution.
+    screening_config : ScreeningConfig, optional
+        Thresholds for the Vickers & Mahrt raw-data screening.  Defaults to
+        :class:`~TaylorSwift.screening.ScreeningConfig` (screening on); pass
+        ``ScreeningConfig(enabled=False)`` to skip it.
 
     Returns
     -------
@@ -105,6 +115,17 @@ def process_interval(
         for a in [u_raw, v_raw, w_raw, T_sonic, co2, h2o]
     ]
     u_r, v_r, w_r, Ts, c, q = arrs
+
+    # --- Vickers & Mahrt (1997) raw-data screening -------------------------
+    # Diagnostic-only: records vm97_* flags but never discards the interval.
+    # Runs on the raw signals before gap-filling, so it is recorded even for
+    # intervals that short-circuit on the NaN test below.
+    res.qc_flags.update(
+        vickers_mahrt_screen(
+            {"u": u_r, "v": v_r, "w": w_r, "T": Ts, "co2": c, "h2o": q},
+            screening_config,
+        )
+    )
 
     # Drop intervals where wind data is >5% NaN
     wind_nan_frac = np.mean(np.isnan(u_r) | np.isnan(v_r) | np.isnan(w_r))
@@ -260,6 +281,7 @@ def process_file(
     config: SiteConfig,
     bins_per_decade: int = 20,
     column_map: dict[str, str] | None = None,
+    screening_config: ScreeningConfig | None = None,
 ) -> list[SpectralResult]:
     """
     Process all averaging intervals in a DataFrame.
@@ -284,6 +306,10 @@ def process_file(
         same convention as the pipelines' ``rename_map`` — e.g.
         ``{"u": "Ux", "v": "Uy", "w": "Uz", "Ts": "T_SONIC"}`` for a
         non-Campbell file.  Names absent from the frame are ignored.
+    screening_config : ScreeningConfig, optional
+        Thresholds for the Vickers & Mahrt raw-data screening, forwarded to
+        :func:`process_interval`.  Pass ``ScreeningConfig(enabled=False)`` to
+        skip screening.
 
     Returns
     -------
@@ -394,6 +420,7 @@ def process_file(
             timestamp_start=edges[i],
             timestamp_end=edges[i + 1],
             bins_per_decade=bins_per_decade,
+            screening_config=screening_config,
         )
         results.append(res)
 

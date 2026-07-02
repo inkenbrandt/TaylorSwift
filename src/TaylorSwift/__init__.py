@@ -52,6 +52,9 @@ _EXPORTS = {
     "plot_cospectra": (".plotting", "plot_cospectra"),
     "plot_spectra": (".plotting", "plot_spectra"),
     "plot_ogive": (".plotting", "plot_ogive"),
+    # Raw-data screening (Vickers & Mahrt 1997)
+    "ScreeningConfig": (".screening", "ScreeningConfig"),
+    "vickers_mahrt_screen": (".screening", "vickers_mahrt_screen"),
     # Data quality and stability
     "fit_inertial_slope": (".data_quality", "fit_inertial_slope"),
     "stationarity_test": (".data_quality", "stationarity_test"),

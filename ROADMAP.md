@@ -150,6 +150,14 @@ In rough priority order for a working micrometeorologist:
    `process_interval`: spike count, amplitude resolution, dropouts, absolute
    limits, skewness/kurtosis — recorded as per-interval `qc_flags` instead of
    the current single NaN-fraction test.
+   ✅ *Done — `screening.py` (`ScreeningConfig`, `vickers_mahrt_screen` and the
+   individual tests). `process_interval`/`process_file` run it by default on
+   the raw signals and record `vm97_*` flags (per-variable spike counts,
+   skewness/kurtosis, amplitude-resolution/dropout/absolute-limit flags, plus
+   interval-level `vm97_hard_flag`/`vm97_soft_flag`) into `qc_flags`, which
+   flow through to `results_to_dataframe`. Diagnostic-only (never discards an
+   interval); disable with `ScreeningConfig(enabled=False)`. The NaN-fraction
+   short-circuit is kept as a can't-process guard.*
 2. **Planar-fit rotation** (Wilczak et al. 2001) as an alternative to double
    rotation, fitted over a multi-day window — important for sloped or
    heterogeneous sites.
