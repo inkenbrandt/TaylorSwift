@@ -23,7 +23,7 @@ import matplotlib.cm as cm
 from matplotlib.ticker import LogLocator
 
 
-from .cospectra import kaimal_cospec_model
+from .cospectra import kaimal_cospec_model, _trapezoid
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +230,7 @@ def plot_spectra(
                 continue
 
             # Normalise by variance (integral of n·S(n) d(ln n) ≈ σ²)
-            var_est = np.trapz(spec, np.log(res.freq + 1e-30))
+            var_est = _trapezoid(spec, np.log(res.freq + 1e-30))
             if abs(var_est) > 1e-12:
                 spec_norm = spec / var_est
             else:

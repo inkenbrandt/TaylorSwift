@@ -5,6 +5,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .config import SiteConfig
 
+# np.trapz was renamed to np.trapezoid in NumPy 2.0 (and removed); support both.
+try:
+    from numpy import trapezoid as _trapezoid
+except ImportError:  # NumPy < 2.0
+    from numpy import trapz as _trapezoid
+
 # ===================================================================
 # Transfer functions
 # ===================================================================
@@ -404,10 +410,10 @@ def compute_spectral_correction_factor(
 
     # Integration in log-frequency space: ∫ Co d(ln f)
     # Numerator: integral of true cospectrum
-    num = np.trapezoid(Co_model, np.log(f_nd))
+    num = _trapezoid(Co_model, np.log(f_nd))
 
     # Denominator: integral of attenuated cospectrum
-    den = np.trapezoid(T * Co_model, np.log(f_nd))
+    den = _trapezoid(T * Co_model, np.log(f_nd))
 
     if den > 1e-12:
         cf = num / den
@@ -430,11 +436,17 @@ def horst_analytical_correction(
     Good for quick estimates; less accurate than the full Massman approach
     for complex instrument configurations.
 
-    CF = 1 / (1 + (2π f_m τ_eff)^α)
+    Horst (1997) gives the measured-to-true flux ratio as
 
-    where f_m is the dimensionless frequency of the cospectral peak,
-    τ_eff is the effective time constant, and α depends on the cospectral
-    model (α ≈ 1 for the Kaimal model).
+        F_meas / F ≈ 1 / (1 + (2π n_m τ_eff)^α)
+
+    so the multiplicative correction factor is
+
+        CF = F / F_meas = 1 + (2π n_m τ_eff)^α
+
+    where n_m is the natural frequency of the cospectral peak, τ_eff is
+    the effective time constant, and α ≈ 7/8 for the Kaimal cospectrum
+    (unstable / neutral stratification).
 
     Parameters
     ----------
@@ -466,9 +478,9 @@ def horst_analytical_correction(
     # Convert to natural frequency
     n_peak = f_peak * u_mean / z_eff
 
-    # Horst (1997) Eq. 9: α ≈ 7/8 for Kaimal cospectrum
+    # Horst (1997): α ≈ 7/8 for Kaimal cospectrum (unstable/neutral)
     alpha = 7.0 / 8.0
-    cf = 1.0 / (1.0 - (2.0 * np.pi * n_peak * tau_eff) ** alpha)
+    cf = 1.0 + (2.0 * np.pi * n_peak * tau_eff) ** alpha
 
     return max(cf, 1.0)
 

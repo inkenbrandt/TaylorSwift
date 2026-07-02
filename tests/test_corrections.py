@@ -13,6 +13,7 @@ from TaylorSwift.cospectra import (
     tf_sonic_line_averaging,
     tf_sensor_separation,
     combined_transfer_function,
+    horst_analytical_correction,
 )
 from TaylorSwift.despike import ukde_despike, despike_dataframe
 
@@ -265,3 +266,41 @@ class TestTransferFunctions:
         # just check the combined TF stays in [0, 1]
         assert np.all(tf >= 0)
         assert np.all(tf <= 1)
+
+
+# ---------------------------------------------------------------------------
+# Horst (1997) analytical correction
+# ---------------------------------------------------------------------------
+
+
+class TestHorstAnalyticalCorrection:
+    """CF = 1 + (2π n_m τ_eff)^(7/8), with n_m = f_peak · U / z."""
+
+    def test_zero_tau_gives_unity(self):
+        assert horst_analytical_correction(5.0, 3.0, tau_eff=0.0) == 1.0
+
+    def test_low_wind_gives_unity(self):
+        assert horst_analytical_correction(0.1, 3.0, tau_eff=0.5) == 1.0
+
+    def test_pinned_value_wT(self):
+        # n_m = 0.065 · 2/3;  CF = 1 + (2π n_m · 0.1)^(7/8)
+        cf = horst_analytical_correction(2.0, 3.0, tau_eff=0.1, flux_type="wT")
+        assert cf == pytest.approx(1.042720, abs=1e-5)
+
+    def test_pinned_value_wu(self):
+        # momentum peak f_peak = 0.085: n_m = 0.085 · 3/10
+        cf = horst_analytical_correction(3.0, 10.0, tau_eff=0.3, flux_type="wu")
+        assert cf == pytest.approx(1.070244, abs=1e-5)
+
+    def test_monotone_increasing_in_tau(self):
+        taus = [0.05, 0.1, 0.3, 1.0, 3.0]
+        cfs = [horst_analytical_correction(3.0, 3.0, t) for t in taus]
+        assert all(b > a for a, b in zip(cfs, cfs[1:]))
+
+    def test_large_tau_stays_finite_and_above_one(self):
+        # Regression: the old 1/(1 - x^α) form went negative here and the
+        # clamp silently returned 1.0 (no correction) for the most
+        # attenuated case.
+        cf = horst_analytical_correction(5.0, 2.0, tau_eff=3.0, flux_type="wT")
+        assert np.isfinite(cf)
+        assert cf == pytest.approx(3.663086, abs=1e-5)

@@ -38,6 +38,7 @@ _EXPORTS = {
     # Data quality and stability
     "fit_inertial_slope": (".data_quality", "fit_inertial_slope"),
     "stationarity_test": (".data_quality", "stationarity_test"),
+    "run_qc": (".data_quality", "run_qc"),
     "QualityFlag": (".data_quality", "QualityFlag"),
     "StabilityParameters": (".data_quality", "StabilityParameters"),
     "StationarityTest": (".data_quality", "StationarityTest"),

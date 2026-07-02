@@ -50,12 +50,10 @@ df, meta = tswift.read_toa5("path/to/TOA5_mysite.dat")
 results = tswift.process_file(df, config)
 
 # --- Run quality control ---
-from tswift.qc import run_qc
-results = run_qc(results)
+results = tswift.run_qc(results)
 
 # --- Plot ---
-from tswift.plotting import plot_cospectra
-fig = plot_cospectra(results)
+fig = tswift.plot_cospectra(results)
 fig.savefig("cospectra.pdf")
 ```
 
@@ -84,14 +82,18 @@ list[SpectralResult]
 
 | Module | Contents |
 |---|---|
-| `core` | `SiteConfig`, `SpectralResult`, `process_interval`, `process_file`, `compute_cospectrum`, `rotate_wind`, `log_bin` |
+| `core` | `process_interval`, `process_file` — the FFT cospectral pipeline |
+| `cospectra` | `SpectralResult`, `compute_cospectrum`, `compute_spectrum`, `log_bin`, transfer functions, `apply_spectral_corrections`, `compute_spectral_correction_factor` |
+| `config` | `SiteConfig`, `InstrumentConfig`, `FluxConfig`, `ProcessingConfig` |
 | `io` | `read_toa5`, `compile_toa5`, `scan_toa5_directory` |
-| `corrections` | `InstrumentConfig`, `ukde_despike`, `despike_dataframe`, transfer functions, `apply_spectral_corrections`, `wpl_correction` |
-| `qc` | `fit_inertial_slope`, `stationarity_test`, `run_qc` |
+| `corrections` | `wpl_correction`, `webb_pearman_leuning`, `shadow_correction`, `enrich_results_with_means` |
+| `despike` | `ukde_despike`, `polars_ukde_despike`, `despike_dataframe`, `despike_med_mod`, `mad_outliers`, `rolling_sigma_filter` |
+| `data_quality` | `fit_inertial_slope`, `stationarity_test`, `run_qc`, `QualityFlag`, `DataQuality`, `quality_filter` |
+| `rotations` | `rotate_wind` (double rotation), `coord_rotation`, `rotate_velocities` |
+| `pipelines` | `run_irga`, `run_kh20` — end-to-end flux pipelines for IRGASON and KH-20 |
 | `plotting` | `plot_cospectra`, `plot_spectra`, `plot_ogive`, `plot_summary_timeseries` |
-| `constants` | `SurfaceType`, `Hemisphere`, `QualityThreshold`, `ProcessingConfig`, `ErrorCode`, `get_displacement_height`, `get_roughness_length`, physical constants |
-| `data_quality` | `QualityFlag`, `StabilityParameters`, `StationarityTest`, `DataQuality`, `OutlierDetection`, `quality_filter`, `rolling_sigma_filter` |
-| `ec_polars` | `CalcFlux` — full flux pipeline for IRGASON and KH-20 with Polars/pandas compat |
+| `constants` | `SurfaceType`, `Hemisphere`, `QualityThreshold`, `get_displacement_height`, `get_roughness_length`, physical constants |
+| `compat` | `CalcFlux` — backward-compatible wrapper around the legacy flux API |
 
 ## Running tests
 

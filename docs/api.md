@@ -5,14 +5,29 @@ This page provides the automated API documentation for `TaylorSwift`.
 ## TaylorSwift.core
 ::: TaylorSwift.core
 
+## TaylorSwift.cospectra
+::: TaylorSwift.cospectra
+
+## TaylorSwift.config
+::: TaylorSwift.config
+
 ## TaylorSwift.io
 ::: TaylorSwift.io
 
 ## TaylorSwift.corrections
 ::: TaylorSwift.corrections
 
-## TaylorSwift.qc
-::: TaylorSwift.qc
+## TaylorSwift.despike
+::: TaylorSwift.despike
+
+## TaylorSwift.data_quality
+::: TaylorSwift.data_quality
+
+## TaylorSwift.rotations
+::: TaylorSwift.rotations
+
+## TaylorSwift.pipelines
+::: TaylorSwift.pipelines
 
 ## TaylorSwift.plotting
 ::: TaylorSwift.plotting
@@ -20,8 +35,5 @@ This page provides the automated API documentation for `TaylorSwift`.
 ## TaylorSwift.constants
 ::: TaylorSwift.constants
 
-## TaylorSwift.data_quality
-::: TaylorSwift.data_quality
-
-## TaylorSwift.ec_polars
-::: TaylorSwift.ec_polars
+## TaylorSwift.compat
+::: TaylorSwift.compat

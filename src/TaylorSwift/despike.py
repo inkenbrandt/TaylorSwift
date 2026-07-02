@@ -35,7 +35,14 @@ def despike_ewma_fb(
 def despike_med_mod(
     df_column: pd.Series, win: int = 800, fill_na: bool = True, addNoise: bool = False
 ) -> pd.Series:
-    import statsmodels.api as sm
+    try:
+        import statsmodels.api as sm
+    except ImportError as exc:
+        raise ImportError(
+            "despike_med_mod requires statsmodels (used for the robust "
+            "linear-model fit). Install it with 'pip install statsmodels' "
+            "or reinstall TaylorSwift with its declared dependencies."
+        ) from exc
 
     np_spikey = np.array(df_column)
     y = df_column.interpolate().bfill().ffill()

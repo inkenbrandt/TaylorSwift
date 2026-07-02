@@ -42,7 +42,7 @@ graph TD
     C --> G[logarithmic frequency binning]
     C --> H[turbulence statistics]
     C --> I[corrections.apply_spectral_corrections]
-    C --> J[qc.run_qc]
+    C --> J[data_quality.run_qc]
     C --> K[plotting.plot_cospectra]
 ```
 

@@ -18,15 +18,18 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
-    "polars>=0.19",
+    "polars>=1.0",
     "pandas>=1.5",
     "pyarrow",
     "KDEpy>=1.1",
     "matplotlib>=3.7",
+    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]
@@ -41,8 +44,8 @@ docs = [
 ]
 
 [project.urls]
-Repository = "https://github.com/paultgriffiths/TaylorSwift"
-Issues = "https://github.com/paultgriffiths/TaylorSwift/issues"
+Repository = "https://github.com/inkenbrandt/TaylorSwift"
+Issues = "https://github.com/inkenbrandt/TaylorSwift/issues"
 
 [tool.setuptools]
 packages = ["TaylorSwift"]
