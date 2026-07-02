@@ -1,9 +1,13 @@
 from __future__ import annotations
+
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 import polars as pl
 from KDEpy import FFTKDE
 from scipy.interpolate import interp1d
+
 from .frame_utils import rolling_median_centered
 
 
@@ -58,7 +62,9 @@ def despike_med_mod(
         data_out = data_out.interpolate()
         data_outnaind = data_out.index[nanind]
         rando = (
-            np.random.normal(scale=mod_fit.scale, size=len(data_outnaind))
+            np.random.default_rng().normal(
+                scale=mod_fit.scale, size=len(data_outnaind)
+            )
             if addNoise
             else 0.0
         )
@@ -376,7 +382,7 @@ def despike_dataframe(
     ... )
     """
     _is_polars = isinstance(df, pl.DataFrame)
-    df_out = df.clone() if _is_polars else df.copy()  # type: ignore
+    df_out = df.clone() if _is_polars else df.copy()
 
     for col in columns:
         if col not in df_out.columns:
@@ -401,7 +407,7 @@ def despike_dataframe(
             print(f"        despike {col:>10s}: {n_changed:5d} samples replaced")
 
         if _is_polars:
-            df_out = df_out.with_columns(pl.Series(col, cleaned))  # type: ignore
+            df_out = df_out.with_columns(pl.Series(col, cleaned))
         else:
             df_out[col] = cleaned
 
@@ -535,23 +541,48 @@ def spike_detection(
     array([200, 600])
     >>> x_clean = np.where(mask, np.nan, x)   # simple removal
     """
+    data = np.asarray(data)
     spikes = np.zeros_like(data, dtype=bool)
+    n = len(data)
+    half = window_size // 2
 
-    for i in range(len(data)):
-        # Get window indices
-        start = max(0, i - window_size // 2)
-        end = min(len(data), i + window_size // 2)
+    def _loop(indices):
+        """Per-sample reference path, used for edges and non-1-D input."""
+        for i in indices:
+            start = max(0, i - half)
+            end = min(n, i + half)
+            window = data[start:end]
+            if window.size == 0:
+                continue
+            mean = np.mean(window)
+            std = np.std(window)
+            if std > 0:  # Avoid division by zero
+                spikes[i] = abs(data[i] - mean) / std > z_threshold
 
-        # Calculate statistics for window
-        window = data[start:end]
-        mean = np.mean(window)
-        std = np.std(window)
+    width = 2 * half  # length of a full (untruncated) window [i-half, i+half)
+    if data.ndim != 1 or half <= 0 or n < width:
+        _loop(range(n))
+        return spikes
 
-        # Check if point is spike
-        if std > 0:  # Avoid division by zero
-            z_score = abs(data[i] - mean) / std
-            spikes[i] = z_score > z_threshold
+    # Interior samples i in [half, n - half] all see a full window, so their
+    # statistics come from one vectorised pass over a sliding-window view.
+    # Chunked so the temporaries stay bounded on long records.
+    windows = np.lib.stride_tricks.sliding_window_view(data, width)
+    chunk = max(1, 4_000_000 // width)
+    for s in range(0, windows.shape[0], chunk):
+        block = windows[s : s + chunk]
+        mean = block.mean(axis=1)
+        std = block.std(axis=1)
+        centre = data[s + half : s + half + block.shape[0]]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            z = np.abs(centre - mean) / std
+            spikes[s + half : s + half + block.shape[0]] = (std > 0) & (
+                z > z_threshold
+            )
 
+    # Truncated windows at the boundaries keep the original per-sample path.
+    _loop(range(half))
+    _loop(range(n - half + 1, n))
     return spikes
 
 
@@ -561,7 +592,7 @@ def rolling_sigma_filter(
     time_col: str = "TIMESTAMP",
     period: str = "5s",
     sigma: float = 3.0,
-    closed: str = "both",  # "both" | "left" | "right" | "none"
+    closed: Literal["left", "right", "both", "none"] = "both",
     output_col: str | None = None,  # default: f"{value_col}_filtered"
     keep_stats: bool = True,  # keep or drop the roll mean/std columns
     ensure_datetime: bool = True,  # cast time_col to pl.Datetime

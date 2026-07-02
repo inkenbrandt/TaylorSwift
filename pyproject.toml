@@ -36,6 +36,9 @@ dependencies = [
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
+    "pytest-benchmark>=4.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
 ]
 docs = [
     "mkdocs>=1.5",
@@ -53,9 +56,54 @@ packages = ["TaylorSwift"]
 [tool.setuptools.package-dir]
 TaylorSwift = "src/TaylorSwift"
 
+[tool.setuptools.package-data]
+TaylorSwift = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--tb=short -q"
 
 [tool.coverage.run]
 source = ["src/TaylorSwift"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E4",  # imports
+    "E7",  # statement style
+    "E9",  # runtime errors
+    "F",   # pyflakes
+    "W",   # whitespace
+    "I",   # import sorting
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "NPY", # numpy rules
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-export hub: unused imports are the backward-compatible API surface.
+"src/TaylorSwift/cospectra.py" = ["F401"]
+
+[tool.mypy]
+# Analysis version 3.12: NumPy 2.x ships stubs using `type` statements that
+# mypy only accepts from 3.12 up. The package itself still supports 3.10.
+python_version = "3.12"
+files = ["src/TaylorSwift"]
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "scipy.*",
+    "statsmodels.*",
+    "KDEpy.*",
+    "matplotlib.*",
+    "pandas.*",
+    "pyarrow.*",
+]
+ignore_missing_imports = true

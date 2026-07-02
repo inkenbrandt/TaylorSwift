@@ -8,8 +8,9 @@ This module provides:
 4. Quality control thresholds
 """
 
-import numpy as np
 from enum import IntEnum
+
+import numpy as np
 
 __all__ = [
     # Physical constants

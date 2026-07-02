@@ -5,14 +5,14 @@ Uses synthetic in-memory TOA5 files written to a temporary directory so no
 real instrument data is required.
 """
 
+from datetime import datetime, timedelta
+from pathlib import Path
+
 import numpy as np
 import polars as pl
 import pytest
-from pathlib import Path
-from datetime import datetime, timedelta
 
-from TaylorSwift.io import read_toa5, scan_toa5_directory, compile_toa5
-
+from TaylorSwift.io import compile_toa5, read_toa5, scan_toa5_directory
 
 # ---------------------------------------------------------------------------
 # Helpers for generating synthetic TOA5 content

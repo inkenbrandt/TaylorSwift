@@ -3,20 +3,19 @@ Tests for TaylorSwift.corrections — despiking, transfer functions, WPL.
 """
 
 import numpy as np
-import pytest
 import pandas as pd
+import pytest
 
 from TaylorSwift.config import InstrumentConfig
 from TaylorSwift.cospectra import (
-    tf_block_average,
-    tf_first_order_response,
-    tf_sonic_line_averaging,
-    tf_sensor_separation,
     combined_transfer_function,
     horst_analytical_correction,
+    tf_block_average,
+    tf_first_order_response,
+    tf_sensor_separation,
+    tf_sonic_line_averaging,
 )
-from TaylorSwift.despike import ukde_despike, despike_dataframe
-
+from TaylorSwift.despike import despike_dataframe, ukde_despike
 
 # ---------------------------------------------------------------------------
 # InstrumentConfig
@@ -295,7 +294,7 @@ class TestHorstAnalyticalCorrection:
     def test_monotone_increasing_in_tau(self):
         taus = [0.05, 0.1, 0.3, 1.0, 3.0]
         cfs = [horst_analytical_correction(3.0, 3.0, t) for t in taus]
-        assert all(b > a for a, b in zip(cfs, cfs[1:]))
+        assert all(b > a for a, b in zip(cfs, cfs[1:], strict=False))
 
     def test_large_tau_stays_finite_and_above_one(self):
         # Regression: the old 1/(1 - x^α) form went negative here and the

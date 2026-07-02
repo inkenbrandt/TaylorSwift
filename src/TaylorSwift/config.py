@@ -1,6 +1,7 @@
 """Configuration models used across spectral and flux-processing pipelines."""
 
 from dataclasses import dataclass, field
+
 import numpy as np
 
 from .constants import CP_DRY_AIR, G0, K_VON_KARMAN, MOLAR_MASS, R_GAS, R_SPECIFIC

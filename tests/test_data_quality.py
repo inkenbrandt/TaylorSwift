@@ -7,15 +7,14 @@ import numpy as np
 import polars as pl
 
 from TaylorSwift.data_quality import (
+    DataQuality,
+    OutlierDetection,
     QualityFlag,
     StabilityParameters,
     StationarityTest,
-    DataQuality,
-    OutlierDetection,
     quality_filter,
     rolling_sigma_filter,
 )
-
 
 # ---------------------------------------------------------------------------
 # QualityFlag enum

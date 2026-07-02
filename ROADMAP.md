@@ -58,6 +58,8 @@ Establish measurement first, then attack the known hot spots.
    synthetic 30-minute 20 Hz interval (36 000 samples) and a synthetic
    multi-day file. Every optimization below should land with a before/after
    number, and CI should catch regressions.
+   ✅ *Done — `benchmarks/` (run with `pytest benchmarks`, compare with
+   `--benchmark-save`/`--benchmark-compare`); a CI job runs it on every push.*
 
 2. **`process_file` interval slicing is quadratic.** Each interval runs
    `df.filter()` over the *entire* frame (`core.py`), so a month of 20 Hz data
@@ -65,6 +67,9 @@ Establish measurement first, then attack the known hot spots.
    loop with a single pass: `group_by_dynamic` on TIMESTAMP, or
    `np.searchsorted` on the already-sorted timestamps to get slice bounds.
    This is the single largest speed win available.
+   ✅ *Done — one `np.searchsorted` pass over the sorted timestamps; the
+   null-filter and sort are also skipped when not needed. Per-interval cost no
+   longer scales with file length (2-day slicing benchmark: 89 → 3.3 ms, 27×).*
 
 3. **Vectorize the lag-search covariances.** `_compute_fluxes`
    (`pipelines.py`) calls `calc_max_covariance` for 21 velocity–scalar pairs,
@@ -72,11 +77,16 @@ Establish measurement first, then attack the known hot spots.
    (mask + means recomputed every time) — ~450 array traversals per interval.
    Compute all lags at once via FFT cross-correlation, or precompute the
    finite mask and running sums so each lag is O(1) after one pass.
+   ✅ *Done — FFT cross-correlation gives all lags in one pass, per-lag means
+   come from prefix sums, and `build_covariance_dict` transforms each array
+   once across all pairs (flux block: 58 → 17 ms, 3.4×).*
 
 4. **Vectorize `spike_detection`** (`despike.py`): it is a Python `for` loop
    over every sample with `np.mean`/`np.std` per window. Replace with
    `np.lib.stride_tricks.sliding_window_view` or cumulative-sum rolling
    statistics — this is a 100–1000× win on realistic inputs.
+   ✅ *Done — `sliding_window_view` with bit-identical per-window statistics
+   (342 → 19 ms on a 30-min interval, 18×).*
 
 5. **Parallelize across intervals and files.** Intervals are embarrassingly
    parallel: add `n_jobs` to `process_file` (via `concurrent.futures`).

@@ -21,18 +21,17 @@ import numpy as np
 import pandas as pd
 
 from . import covariance, despike, thermo
-from .constants import _calc_L
 from .config import FluxConfig
-from .corrections import webb_pearman_leuning, shadow_correction
-from .cospectra import _correct_spectral, _calc_alph_x
+from .constants import _calc_L
+from .corrections import shadow_correction, webb_pearman_leuning
 from .frame_utils import normalize_input_frame
 from .rotations import (
-    determine_wind_dir,
     coord_rotation,
-    rotate_velocities,
+    determine_wind_dir,
     rotate_covariances,
+    rotate_velocities,
 )
-
+from .transfer_functions import massman_alpha_x, massman_spectral_factor
 
 # ---------------------------------------------------------------------------
 # Column aliases from common datalogger exports → canonical names used here
@@ -74,13 +73,6 @@ def _correct_kh20_oxygen(Uz_Ta: float, P: float, T: float, config: FluxConfig) -
         * (config.Ko / config.Kw)
         * Uz_Ta
     )
-
-
-def _max_cov_value(x, y, lag: int) -> float:
-    result = covariance.calc_max_covariance(x, y, lag=lag)
-    if result:
-        return float(result[0][1])
-    return float(covariance.calc_cov(x, y))
 
 
 def _duration_days(df: pd.DataFrame) -> float:
@@ -136,15 +128,15 @@ def _compute_fluxes(df: pd.DataFrame, config: FluxConfig) -> pd.Series:
     Q_mean = float(np.nanmean(Q))
 
     # 2. Raw covariances (lag-optimised via max-covariance search).
+    #    build_covariance_dict prepares/transforms each array once and
+    #    reuses it across all 21 pairs (plus Ts-Q below).
     lag = config.lag
     variables = {"Ux": Ux, "Uy": Uy, "Uz": Uz, "Ts": Ts, "pV": pV, "Q": Q, "Sd": Sd}
-    covar: dict[str, float] = {}
-    for vel in ("Ux", "Uy", "Uz"):
-        for name, arr in variables.items():
-            covar[f"{vel}-{name}"] = _max_cov_value(variables[vel], arr, lag)
+    velocities = {"Ux": Ux, "Uy": Uy, "Uz": Uz, "Ts": Ts}
+    covar: dict[str, float] = covariance.build_covariance_dict(
+        velocities, variables, lag=lag
+    )
     covar["Ts-Ts"] = covariance.calc_cov(Ts, Ts)
-    covar["Ts-Q"] = _max_cov_value(Ts, Q, lag)
-    covar["Ux-Uy"] = _max_cov_value(Ux, Uy, lag)
 
     # 3. Coordinate rotation + rotated-frame statistics.
     cosv, sinv, sinTheta, cosTheta, Uxy, Uxyz = coord_rotation(Ux, Uy, Uz)
@@ -208,12 +200,12 @@ def _compute_fluxes(df: pd.DataFrame, config: FluxConfig) -> pd.Series:
     tauEMom = np.sqrt((0.1 / (5.7 * UMean)) ** 2 + (0.1 / (2.8 * UMean)) ** 2)
 
     L = _calc_L(Ustr, Tsa, Uz_Ta, config.g, config.von_karman)
-    alpha, X = _calc_alph_x(config.UHeight, L)
+    alpha, X = massman_alpha_x(config.UHeight, L)
     fX = X * UMean / config.UHeight
     B_par = 2.0 * np.pi * fX * tauB
-    Ts_corr = _correct_spectral(B_par, alpha, 2.0 * np.pi * fX * tauETs)
-    Mom_corr = _correct_spectral(B_par, alpha, 2.0 * np.pi * fX * tauEMom)
-    KH_corr = _correct_spectral(B_par, alpha, 2.0 * np.pi * fX * tauEKH20)
+    Ts_corr = massman_spectral_factor(B_par, alpha, 2.0 * np.pi * fX * tauETs)
+    Mom_corr = massman_spectral_factor(B_par, alpha, 2.0 * np.pi * fX * tauEMom)
+    KH_corr = massman_spectral_factor(B_par, alpha, 2.0 * np.pi * fX * tauEKH20)
 
     if Mom_corr > 0:
         Uxy_Uz /= Mom_corr
@@ -322,7 +314,7 @@ def run_irga(df, config: FluxConfig, *, rename_map=None, ts_col=None) -> pd.Seri
     )
 
     # IRGASON is an integrated sensor — no KH-20 oxygen correction.
-    setattr(config, "apply_kh20_oxygen", False)
+    config.apply_kh20_oxygen = False
     return _compute_fluxes(df, config)
 
 
@@ -394,5 +386,5 @@ def run_kh20(df, config: FluxConfig, *, rename_map=None, ts_col=None) -> pd.Seri
         - df["Q"].to_numpy()
     )
 
-    setattr(config, "apply_kh20_oxygen", True)
+    config.apply_kh20_oxygen = True
     return _compute_fluxes(df, config)

@@ -19,12 +19,12 @@ typical IRGASON file sizes, and the vectorised sort / unique / diff operations
 scale well to multi-day compiled time series.
 """
 
-import polars as pl
-import numpy as np
-from pathlib import Path
-from datetime import datetime
 import re
+from datetime import datetime
+from pathlib import Path
 
+import numpy as np
+import polars as pl
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -104,7 +104,7 @@ def read_toa5(
     filepath = Path(filepath)
 
     # --- Parse the four-line header (plain Python I/O) ---------------------
-    with open(filepath, 'r') as fh:
+    with open(filepath) as fh:
         meta_line = fh.readline().strip().strip('"')
         col_line  = fh.readline()
         unit_line = fh.readline()
@@ -122,7 +122,7 @@ def read_toa5(
 
     col_names = [s.strip().strip('"') for s in col_line.split(',')]
     units     = [s.strip().strip('"') for s in unit_line.split(',')]
-    metadata['units'] = dict(zip(col_names, units))
+    metadata['units'] = dict(zip(col_names, units, strict=False))
 
     # Force TIMESTAMP to be read as String so we can clean it ourselves
     schema_overrides = ({'TIMESTAMP': pl.String}
@@ -238,7 +238,7 @@ def scan_toa5_directory(
     for fp in files:
         try:
             # Quick peek: grab first data line for timestamp range
-            with open(fp, 'r') as fh:
+            with open(fp) as fh:
                 for _ in range(4):
                     fh.readline()
                 first_line = fh.readline().strip()
@@ -268,7 +268,7 @@ def scan_toa5_directory(
                         pass
 
             # Metadata from header row
-            with open(fp, 'r') as fh:
+            with open(fp) as fh:
                 meta_line = fh.readline().strip()
             meta_parts = [s.strip().strip('"') for s in meta_line.split(',')]
 

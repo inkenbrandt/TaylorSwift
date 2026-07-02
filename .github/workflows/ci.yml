@@ -30,6 +30,28 @@ jobs:
       - name: Run tests with coverage
         run: pytest --cov=TaylorSwift --cov-report=term-missing
 
+  benchmark:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev]"
+
+      # Runs the Phase 1 benchmark suite so performance-critical paths are
+      # exercised on every push and the numbers are visible in the job log.
+      # Shared-runner timings are too noisy to gate on, so this job reports
+      # rather than fails; compare locally with --benchmark-compare.
+      - name: Run benchmarks
+        run: pytest benchmarks --benchmark-only --benchmark-columns=mean,stddev,rounds
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -46,4 +68,4 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff check
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ benchmarks/

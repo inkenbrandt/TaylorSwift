@@ -2,13 +2,13 @@
 Shared pytest fixtures for TaylorSwift tests.
 """
 
+from datetime import datetime
+
 import numpy as np
 import pytest
-from datetime import datetime
 
 from TaylorSwift import SiteConfig
 from TaylorSwift.core import SpectralResult
-
 
 # ---------------------------------------------------------------------------
 # Random-number seed for reproducibility

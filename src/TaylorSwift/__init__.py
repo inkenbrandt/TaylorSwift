@@ -10,10 +10,17 @@ _EXPORTS = {
     # Core spectral computation
     "compute_cospectrum": (".cospectra", "compute_cospectrum"),
     "compute_spectrum": (".cospectra", "compute_spectrum"),
-    "rotate_wind": (".core", "rotate_wind"),
+    "rotate_wind": (".rotations", "rotate_wind"),
     "process_interval": (".core", "process_interval"),
     "process_file": (".core", "process_file"),
     "SiteConfig": (".config", "SiteConfig"),
+    # Results and tabular export
+    "SpectralResult": (".results", "SpectralResult"),
+    "FluxResult": (".results", "FluxResult"),
+    "results_to_dataframe": (".results", "results_to_dataframe"),
+    "spectra_to_dataframe": (".results", "spectra_to_dataframe"),
+    "results_to_csv": (".results", "results_to_csv"),
+    "results_to_parquet": (".results", "results_to_parquet"),
     # File I/O
     "read_toa5": (".io", "read_toa5"),
     "compile_toa5": (".io", "compile_toa5"),
@@ -21,12 +28,22 @@ _EXPORTS = {
     # Corrections
     "InstrumentConfig": (".config", "InstrumentConfig"),
     "wpl_correction": (".corrections", "wpl_correction"),
-    "apply_spectral_corrections": (".cospectra", "apply_spectral_corrections"),
+    "apply_spectral_corrections": (".corrections", "apply_spectral_corrections"),
     "compute_spectral_correction_factor": (
-        ".cospectra",
+        ".corrections",
         "compute_spectral_correction_factor",
     ),
+    "horst_analytical_correction": (".corrections", "horst_analytical_correction"),
+    "combined_transfer_function": (
+        ".transfer_functions",
+        "combined_transfer_function",
+    ),
+    "kaimal_cospec_model": (".transfer_functions", "kaimal_cospec_model"),
     "enrich_results_with_means": (".corrections", "enrich_results_with_means"),
+    # Legacy CalcFlux pipelines
+    "run_irga": (".pipelines", "run_irga"),
+    "run_kh20": (".pipelines", "run_kh20"),
+    "CalcFlux": (".compat", "CalcFlux"),
     # Despiking
     "ukde_despike": (".despike", "ukde_despike"),
     "polars_ukde_despike": (".despike", "polars_ukde_despike"),

@@ -1,3 +1,19 @@
+"""
+rotations.py — Coordinate rotation for sonic-anemometer wind vectors.
+
+One implementation of the standard double rotation (Kaimal & Finnigan 1994)
+serves both stacks:
+
+* :func:`coord_rotation` computes the rotation angles and
+  :func:`rotate_velocities` applies them — the primitive form used by the
+  CalcFlux pipelines, where the angles are also needed to rotate
+  covariances (:func:`rotate_covariances`).
+* :func:`rotate_wind` is the convenience wrapper used by the spectral
+  stack: it derives the angles and applies them in one call.
+"""
+
+from __future__ import annotations
+
 import numpy as np
 
 
@@ -17,15 +33,67 @@ def determine_wind_dir(
 
 
 # ---------------------------------------------------------------------------
-# Wind coordinate rotation (double rotation)
+# Double rotation (yaw + pitch) — Kaimal & Finnigan 1994
 # ---------------------------------------------------------------------------
-def rotate_wind(u_raw: np.ndarray, v_raw: np.ndarray, w_raw: np.ndarray):
+def coord_rotation(
+    Ux: np.ndarray, Uy: np.ndarray, Uz: np.ndarray
+) -> tuple[float, float, float, float, float, float]:
+    """
+    Rotation angles for the double rotation (yaw + pitch).
+
+    Returns
+    -------
+    cosv, sinv : float
+        Cosine/sine of the yaw angle (first rotation, aligns x with the
+        mean horizontal wind).
+    sinTheta, cosTheta : float
+        Sine/cosine of the pitch angle (second rotation, zeroes mean w).
+    Uxy : float
+        Mean horizontal wind speed [m/s].
+    Uxyz : float
+        Mean total wind speed [m/s].
+    """
+    xmean = float(np.nanmean(Ux))
+    ymean = float(np.nanmean(Uy))
+    zmean = float(np.nanmean(Uz))
+    Uxy = np.sqrt(xmean**2 + ymean**2)
+    Uxyz = np.sqrt(xmean**2 + ymean**2 + zmean**2)
+    if Uxy < 1e-9 or Uxyz < 1e-9:
+        return 1.0, 0.0, 0.0, 1.0, Uxy, Uxyz
+    cosv = xmean / Uxy
+    sinv = ymean / Uxy
+    sinTheta = zmean / Uxyz
+    cosTheta = Uxy / Uxyz
+    return cosv, sinv, sinTheta, cosTheta, Uxy, Uxyz
+
+
+def rotate_velocities(
+    Ux: np.ndarray,
+    Uy: np.ndarray,
+    Uz: np.ndarray,
+    cosv: float,
+    sinv: float,
+    sinTheta: float,
+    cosTheta: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Apply the double rotation defined by :func:`coord_rotation` angles."""
+    Uxr = Ux * cosTheta * cosv + Uy * cosTheta * sinv + Uz * sinTheta
+    Uyr = Uy * cosv - Ux * sinv
+    Uzr = Uz * cosTheta - Ux * sinTheta * cosv - Uy * sinTheta * sinv
+    return Uxr, Uyr, Uzr
+
+
+def rotate_wind(
+    u_raw: np.ndarray, v_raw: np.ndarray, w_raw: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """
     Apply double rotation so that mean(v_rot) = 0 and mean(w_rot) = 0.
 
     This aligns the x-axis with the mean horizontal wind vector and tilts
     the coordinate system so the mean vertical velocity vanishes — the
-    standard approach in eddy-covariance processing.
+    standard approach in eddy-covariance processing.  Thin wrapper around
+    :func:`coord_rotation` + :func:`rotate_velocities`, so both processing
+    stacks share one implementation of the rotation math.
 
     Parameters
     ----------
@@ -45,58 +113,22 @@ def rotate_wind(u_raw: np.ndarray, v_raw: np.ndarray, w_raw: np.ndarray):
     v = np.asarray(v_raw, dtype=np.float64)
     w = np.asarray(w_raw, dtype=np.float64)
 
-    u_bar = np.nanmean(u)
-    v_bar = np.nanmean(v)
+    cosv, sinv, sinTheta, cosTheta, _Uxy, _Uxyz = coord_rotation(u, v, w)
+    u_rot, v_rot, w_rot = rotate_velocities(u, v, w, cosv, sinv, sinTheta, cosTheta)
 
-    # First rotation: align u with horizontal wind vector
-    alpha = np.arctan2(v_bar, u_bar)
-    cos_a, sin_a = np.cos(alpha), np.sin(alpha)
-
-    u1 = u * cos_a + v * sin_a
-    v1 = -u * sin_a + v * cos_a
-    w1 = w.copy()
-
-    # Second rotation: tilt to make mean(w) = 0
-    u1_bar = np.nanmean(u1)
-    w1_bar = np.nanmean(w1)
-    beta = np.arctan2(w1_bar, u1_bar)
-    cos_b, sin_b = np.cos(beta), np.sin(beta)
-
-    u2 = u1 * cos_b + w1 * sin_b
-    v2 = v1.copy()
-    w2 = -u1 * sin_b + w1 * cos_b
-
-    wind_dir = np.degrees(alpha) % 360.0
-
-    return u2, v2, w2, wind_dir
-
-
-def coord_rotation(Ux, Uy, Uz):
-    """Double rotation (yaw + pitch) — Kaimal & Finnigan 1994."""
-    xmean = float(np.nanmean(Ux))
-    ymean = float(np.nanmean(Uy))
-    zmean = float(np.nanmean(Uz))
-    Uxy = np.sqrt(xmean**2 + ymean**2)
-    Uxyz = np.sqrt(xmean**2 + ymean**2 + zmean**2)
-    if Uxy < 1e-9 or Uxyz < 1e-9:
-        return 1.0, 0.0, 0.0, 1.0, Uxy, Uxyz
-    cosv = xmean / Uxy
-    sinv = ymean / Uxy
-    sinTheta = zmean / Uxyz
-    cosTheta = Uxy / Uxyz
-    return cosv, sinv, sinTheta, cosTheta, Uxy, Uxyz
-
-
-def rotate_velocities(Ux, Uy, Uz, cosv, sinv, sinTheta, cosTheta):
-    Uxr = Ux * cosTheta * cosv + Uy * cosTheta * sinv + Uz * sinTheta
-    Uyr = Uy * cosv - Ux * sinv
-    Uzr = Uz * cosTheta - Ux * sinTheta * cosv - Uy * sinTheta * sinv
-    return Uxr, Uyr, Uzr
+    wind_dir = float(np.degrees(np.arctan2(sinv, cosv))) % 360.0
+    return u_rot, v_rot, w_rot, wind_dir
 
 
 def rotate_covariances(
-    covar, errvals, cosv, sinv, sinTheta, cosTheta, scalar_key: str = "Ts"
-):
+    covar: dict[str, float],
+    errvals: dict[str, float],
+    cosv: float,
+    sinv: float,
+    sinTheta: float,
+    cosTheta: float,
+    scalar_key: str = "Ts",
+) -> dict[str, float]:
     """Rotate scalar and momentum covariances into the streamline frame."""
     cov = dict(covar)
 

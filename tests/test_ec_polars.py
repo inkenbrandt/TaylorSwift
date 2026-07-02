@@ -13,12 +13,17 @@ import pytest
 
 from TaylorSwift.compat import CalcFlux
 from TaylorSwift.frame_utils import (
-    to_pl_df as _to_pl_df,
-    to_same_type as _to_same_type,
-    get_series as _get_series,
     assign as _assign,
 )
-
+from TaylorSwift.frame_utils import (
+    get_series as _get_series,
+)
+from TaylorSwift.frame_utils import (
+    to_pl_df as _to_pl_df,
+)
+from TaylorSwift.frame_utils import (
+    to_same_type as _to_same_type,
+)
 
 # ---------------------------------------------------------------------------
 # Construction

@@ -30,9 +30,10 @@ Vickers, D. & Mahrt, L. (1997). Quality control analysis of flux data.
     J. Atmos. Ocean. Technol., 14, 512–526.
 """
 
-import numpy as np
 from dataclasses import dataclass
 from enum import IntEnum
+
+import numpy as np
 import polars as pl
 
 

@@ -18,17 +18,16 @@ Moraes, O.L.L. et al. (2008). Comparing spectra and cospectra of turbulence
 Stull, R.B. (1988). An Introduction to Boundary Layer Meteorology. Kluwer.
 """
 
-import numpy as np
-import polars as pl
 from datetime import timedelta
 
+import numpy as np
+import polars as pl
+
 from .config import SiteConfig
+from .constants import G0, K_VON_KARMAN
+from .cospectra import log_bin
+from .results import SpectralResult
 from .rotations import rotate_wind
-from .cospectra import (
-    log_bin,
-    SpectralResult,
-)
-from .constants import K_VON_KARMAN, G0
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +244,23 @@ def process_interval(
 # ---------------------------------------------------------------------------
 # Batch-process an entire file
 # ---------------------------------------------------------------------------
-def process_file(df, config: SiteConfig, bins_per_decade: int = 20):
+_REQUIRED_COLUMNS = (
+    "TIMESTAMP",
+    "Ux",
+    "Uy",
+    "Uz",
+    "T_SONIC",
+    "CO2_density",
+    "H2O_density",
+)
+
+
+def process_file(
+    df,
+    config: SiteConfig,
+    bins_per_decade: int = 20,
+    column_map: dict[str, str] | None = None,
+) -> list[SpectralResult]:
     """
     Process all averaging intervals in a DataFrame.
 
@@ -257,12 +272,18 @@ def process_file(df, config: SiteConfig, bins_per_decade: int = 20):
     Parameters
     ----------
     df : pl.DataFrame or pd.DataFrame
-        Must contain columns: ``TIMESTAMP``, ``Ux``, ``Uy``, ``Uz``,
-        ``T_SONIC``, ``CO2_density``, ``H2O_density``.
+        Must contain (possibly via ``column_map``) the columns:
+        ``TIMESTAMP``, ``Ux``, ``Uy``, ``Uz``, ``T_SONIC``,
+        ``CO2_density``, ``H2O_density``.
     config : SiteConfig
         Station metadata.
     bins_per_decade : int
         Log-binning resolution.
+    column_map : dict, optional
+        Mapping of *your* column names to the canonical names above, the
+        same convention as the pipelines' ``rename_map`` — e.g.
+        ``{"u": "Ux", "v": "Uy", "w": "Uz", "Ts": "T_SONIC"}`` for a
+        non-Campbell file.  Names absent from the frame are ignored.
 
     Returns
     -------
@@ -274,14 +295,28 @@ def process_file(df, config: SiteConfig, bins_per_decade: int = 20):
     if not isinstance(df, pl.DataFrame):
         df = pl.from_pandas(df)
 
-    df = df.sort("TIMESTAMP")
+    if column_map:
+        present = {src: dst for src, dst in column_map.items() if src in df.columns}
+        if present:
+            df = df.rename(present)
 
-    # Drop rows where the timestamp failed to parse (Polars sort puts nulls
-    # first with the default nulls_last=False, so df['TIMESTAMP'][0] would
-    # be None for any file that has even one unparseable timestamp row).
-    df = df.filter(pl.col("TIMESTAMP").is_not_null())
+    missing = [c for c in _REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"process_file: missing required column(s) {missing}. "
+            f"Available columns: {list(df.columns)}. "
+            f"Pass column_map={{'<your name>': '<canonical name>'}} to rename."
+        )
+
+    # Drop rows where the timestamp failed to parse, then sort. Both steps
+    # copy the whole frame, so they are guarded: logger files normally have
+    # no null timestamps and arrive already time-ordered.
+    if df["TIMESTAMP"].null_count() > 0:
+        df = df.filter(pl.col("TIMESTAMP").is_not_null())
     if len(df) == 0:
         return []
+    if not df["TIMESTAMP"].is_sorted():
+        df = df.sort("TIMESTAMP")
 
     # --- Build interval edge list without pandas ---------------------------
     period_sec = int(config.averaging_period * 60)
@@ -335,10 +370,15 @@ def process_file(df, config: SiteConfig, bins_per_decade: int = 20):
     n_expected = int(config.averaging_period * 60 * config.sampling_freq)
     results = []
 
+    # Timestamps are sorted, so every interval is a contiguous row range:
+    # locate all edges in one binary-search pass instead of re-filtering the
+    # whole frame per interval (O(E log N) total instead of O(E·N)).
+    ts = df["TIMESTAMP"].to_numpy()
+    edges_np = np.array(edges, dtype="datetime64[us]").astype(ts.dtype)
+    bounds = np.searchsorted(ts, edges_np, side="left")
+
     for i in range(len(edges) - 1):
-        sub = df.filter(
-            (pl.col("TIMESTAMP") >= edges[i]) & (pl.col("TIMESTAMP") < edges[i + 1])
-        )
+        sub = df[int(bounds[i]) : int(bounds[i + 1])]
 
         if len(sub) < 0.9 * n_expected:
             continue  # skip intervals with > 10 % missing records

@@ -17,13 +17,12 @@ Kaimal, J.C. et al. (1972). Spectral characteristics of surface-layer
 Moraes, O.L.L. et al. (2008). Physica A, 387, 4927–4939.
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.ticker import LogLocator
 
-
-from .cospectra import kaimal_cospec_model, _trapezoid
+from .transfer_functions import _trapezoid, kaimal_cospec_model
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +95,7 @@ def plot_cospectra(
     # Stability colormap
     import matplotlib.colors as mcolors
 
-    cmap = cm.get_cmap("RdYlBu_r")
+    cmap = plt.get_cmap("RdYlBu_r")
     norm = mcolors.TwoSlopeNorm(vmin=-2.0, vcenter=0.0, vmax=2.0)
 
     panels = [
@@ -203,7 +202,7 @@ def plot_spectra(
 
     import matplotlib.colors as mcolors
 
-    cmap = cm.get_cmap("RdYlBu_r")
+    cmap = plt.get_cmap("RdYlBu_r")
     norm = mcolors.TwoSlopeNorm(vmin=-2.0, vcenter=0.0, vmax=2.0)
 
     panels = [
@@ -293,7 +292,7 @@ def plot_ogive(
         ),
     ]
 
-    for ax, (og_attr, cov_attr, ylabel, title) in zip(axes, labels):
+    for ax, (og_attr, cov_attr, ylabel, title) in zip(axes, labels, strict=True):
         ax.set_xscale("log")
         ax.set_xlabel("$f = nz/U$", fontsize=10)
         ax.set_ylabel(ylabel, fontsize=10)

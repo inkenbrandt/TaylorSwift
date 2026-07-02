@@ -2,11 +2,18 @@
 compat.py — Backward-compatibility shim for the legacy CalcFlux API.
 
 Provides CalcFlux as a thin wrapper around the current FluxConfig dataclass,
-preserving the original constructor signature and utility methods.
+preserving the original constructor signature and utility methods.  All
+physics and statistics delegate to :mod:`TaylorSwift.thermo` and
+:mod:`TaylorSwift.covariance` — nothing is re-implemented here.
 """
+
+from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 
+from . import covariance, thermo
 from .config import FluxConfig
 
 
@@ -27,53 +34,53 @@ class CalcFlux:
     273.15
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         self.config = FluxConfig(**kwargs)
-        self.covar: dict = {}
-        self.avgvals: dict = {}
+        self.covar: dict[str, float] = {}
+        self.avgvals: dict[str, float] = {}
 
     # ------------------------------------------------------------------
-    # Temperature conversions
+    # Temperature conversions — delegate to thermo
     # ------------------------------------------------------------------
 
     def convert_KtoC(self, T):
         """Convert Kelvin to Celsius."""
-        return np.asarray(T, dtype=float) - 273.15 if not np.isscalar(T) else float(T) - 273.15
+        if np.isscalar(T):
+            return float(thermo.convert_KtoC(float(T)))
+        return thermo.convert_KtoC(np.asarray(T, dtype=float))
 
     def convert_CtoK(self, T):
         """Convert Celsius to Kelvin."""
-        return np.asarray(T, dtype=float) + 273.15 if not np.isscalar(T) else float(T) + 273.15
+        if np.isscalar(T):
+            return float(thermo.convert_CtoK(float(T)))
+        return thermo.convert_CtoK(np.asarray(T, dtype=float))
 
     # ------------------------------------------------------------------
-    # Statistical helpers
+    # Statistical helpers — delegate to covariance
     # ------------------------------------------------------------------
 
     def calc_cov(self, x, y) -> float:
         """Covariance of x and y with ddof=1."""
-        x = np.asarray(x, dtype=float)
-        y = np.asarray(y, dtype=float)
-        return float(np.cov(x, y)[0, 1])
+        return covariance.calc_cov(x, y)
 
     def calc_MSE(self, x) -> float:
         """Mean squared deviation from the mean (variance with ddof=0)."""
-        x = np.asarray(x, dtype=float)
-        return float(np.mean((x - np.mean(x)) ** 2))
+        return covariance.calc_MSE(x)
 
     # ------------------------------------------------------------------
-    # Thermodynamic helpers
+    # Thermodynamic helpers — delegate to thermo
     # ------------------------------------------------------------------
 
     def calc_Es(self, T):
         """
-        Saturation vapour pressure [Pa] via the Magnus–Tetens formula.
+        Saturation vapour pressure [Pa] via the Tetens formula.
 
         Parameters
         ----------
         T : float or array-like
             Temperature [K].
         """
-        T_c = np.asarray(T, dtype=float) - 273.15
-        es = 611.2 * np.exp(17.67 * T_c / (T_c + 243.5))
+        es = thermo.calc_Es(np.asarray(T, dtype=float))
         return float(es) if np.isscalar(T) else es
 
     def tetens(self, T_C):
@@ -85,5 +92,5 @@ class CalcFlux:
         T_C : array-like
             Temperature [°C].
         """
-        T_C = np.asarray(T_C, dtype=float)
-        return 6.1078 * 10.0 ** (7.5 * T_C / (237.3 + T_C))
+        # thermo.tetens returns kPa; the legacy API contract is hPa.
+        return thermo.tetens(np.asarray(T_C, dtype=float)) * 10.0

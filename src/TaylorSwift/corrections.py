@@ -1,68 +1,77 @@
 """
-corrections.py — Spectral and flux corrections for eddy covariance data.
+corrections.py — Flux corrections for eddy covariance data.
 
-Implements the standard suite of corrections used in the micromet community:
+This is the single home for every correction applied to computed fluxes;
+both the spectral stack (:mod:`TaylorSwift.core`) and the legacy CalcFlux
+pipelines (:mod:`TaylorSwift.pipelines`) call the functions defined here.
 
-DESPIKING (pre-processing, applied before spectral computation):
-  0. Iterative UKDE despiking — kernel density estimation identifies and
-     removes statistical outliers from the raw time series before FFTs are
-     computed (Metzger et al. 2012).
-     • ukde_despike          – scipy Gaussian KDE, iterative (small arrays)
-     • polars_ukde_despike   – FFT-KDE via KDEpy, single-pass (large arrays)
-     • despike_dataframe     – multi-column wrapper for pandas DataFrames
-
-HIGH-FREQUENCY CORRECTIONS (attenuate flux at high frequencies):
-  1. Sensor frequency response — first-order time constant (Moore 1986)
-  2. Path averaging / line averaging along sonic paths (Kaimal et al. 1968)
-  3. Scalar path averaging for IRGA optical path (Moore 1986)
-  4. Sensor separation — lateral/longitudinal displacement between sonic
-     and gas analyser (Moore 1986).  For IRGASON this is ~0 (integrated).
-  5. Combined transfer function approach (Massman 2000)
-  6. Analytical correction factor (Horst 1997)
-
-LOW-FREQUENCY CORRECTIONS (attenuate flux at low frequencies):
-  7. Block-average (finite averaging window) transfer function
-  8. Linear detrend transfer function
+SPECTRAL (frequency-response) CORRECTIONS:
+  * :func:`compute_spectral_correction_factor` — full numerical integration
+    of the Kaimal model cospectrum against the combined transfer function
+    (Massman 2000).  Transfer functions live in
+    :mod:`TaylorSwift.transfer_functions`.
+  * :func:`horst_analytical_correction` — closed-form approximation
+    (Horst 1997).
+  * :func:`apply_spectral_corrections` — applies either method (plus WPL)
+    to a list of :class:`~TaylorSwift.results.SpectralResult`.
 
 DENSITY CORRECTIONS:
-  9. Webb-Pearman-Leuning (WPL 1980) correction for open-path CO₂/H₂O
-     fluxes measured as density.
+  * :func:`wpl_correction` — Webb-Pearman-Leuning (1980) correction of
+    open-path CO₂/H₂O density fluxes (Fc, Fe).
+  * :func:`webb_pearman_leuning` — the Campbell EasyFlux formulation of the
+    same WPL correction for latent heat, coupled with the sonic-temperature
+    humidity correction.  Used by the CalcFlux pipelines where H and LE are
+    solved together.
+
+WIND CORRECTIONS:
+  * :func:`shadow_correction` — CSAT3 transducer-shadow correction
+    (Horst, Wilczak & Cook 2015).
 
 References
 ----------
-Moore, C.J. (1986). Frequency response corrections for eddy correlation
-    systems. Boundary-Layer Meteorol., 37, 17–35.
 Massman, W.J. (2000). A simple method for estimating frequency response
     corrections for eddy covariance systems. Agric. For. Meteorol., 104,
     185–198.
-Massman, W.J. (2001). Reply to comment by Rannik on "A simple method..."
-    Agric. For. Meteorol., 107, 247–251.
 Horst, T.W. (1997). A simple formula for attenuation of eddy fluxes
     measured with first-order-response scalar sensors. Boundary-Layer
     Meteorol., 82, 219–233.
-Kaimal, J.C. et al. (1968). Deriving power spectra from a three-component
-    sonic anemometer. J. Appl. Meteorol., 7, 827–837.
 Webb, E.K., Pearman, G.I. & Leuning, R. (1980). Correction of flux
     measurements for density effects due to heat and water vapour transfer.
     Quart. J. Roy. Meteor. Soc., 106, 85–100.
 Leuning, R. (2007). The correct formula for the WPL correction.
     Boundary-Layer Meteorol., 126, 263–272.
-Metzger, S., Junkermann, W., Mauder, M., Beyrich, F., Butterbach-Bahl, K.,
-    Schmid, H. P., & Foken, T. (2012). Eddy-covariance flux measurements
-    with a weight-shift microlight aircraft. Atmospheric Measurement
-    Techniques, 5, 1699–1717.
+Horst, T.W., Wilczak, J.M. & Cook, D. (2015). Correction of a non-orthogonal,
+    three-component sonic anemometer for flow distortion by transducer
+    shadowing. Boundary-Layer Meteorol., 155, 371–395.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
 
-from .constants import MOLAR_MASS, R_SPECIFIC, CP_DRY_AIR, T_ZERO_C
+from .constants import CP_DRY_AIR, MOLAR_MASS, R_SPECIFIC, T_ZERO_C
+from .transfer_functions import (
+    _SCALAR_FLUXES,
+    _sensor_tau_for_flux,
+    _trapezoid,
+    combined_transfer_function,
+    kaimal_cospec_model,
+)
+
+if TYPE_CHECKING:
+    from .config import SiteConfig
+    from .results import SpectralResult
 
 
 # ---------------------------------------------------------------------------
 # Micrometeorological helpers (ported from legacy CalcFlux class)
 # ---------------------------------------------------------------------------
-def shadow_correction(Ux, Uy, Uz, n_iter: int = 4):
+def shadow_correction(
+    Ux: np.ndarray, Uy: np.ndarray, Uz: np.ndarray, n_iter: int = 4
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """CSAT3 transducer-shadow correction (Horst, Wilczak & Cook 2015)."""
     h = np.array(
         [
@@ -119,6 +128,33 @@ def webb_pearman_leuning(
     Cp: float,
     pD: float,
 ) -> float:
+    """
+    WPL-corrected latent heat flux [W m⁻²] — Campbell EasyFlux formulation.
+
+    Solves the Webb et al. (1980) density correction for LE together with
+    the sonic-temperature humidity correction (the coupled H/LE system),
+    which is why it takes kinematic covariances rather than raw fluxes.
+    For the standard open-path Fc/Fe correction use :func:`wpl_correction`.
+
+    Parameters
+    ----------
+    lamb : float
+        Latent heat of vaporisation [J kg⁻¹].
+    Tsa : float
+        Mean sonic-derived absolute air temperature [K].
+    pVavg : float
+        Mean water-vapour density [kg m⁻³].
+    Uz_Ta : float
+        Kinematic sensible-heat covariance w'T' [K m s⁻¹].
+    Uz_pV : float
+        Kinematic vapour covariance w'ρv' [kg m⁻² s⁻¹].
+    p : float
+        Moist-air density [kg m⁻³].
+    Cp : float
+        Moist-air specific heat [J kg⁻¹ K⁻¹].
+    pD : float
+        Dry-air density [kg m⁻³].
+    """
     pCpTsa = p * Cp * Tsa
     pRatio = 1.0 + 1.6129 * (pVavg / pD)
     return (
@@ -138,7 +174,7 @@ def wpl_correction(
     P_mean: float,
     co2_mean: float,
     h2o_mean: float,
-) -> dict:
+) -> dict[str, float]:
     """
     Webb-Pearman-Leuning (1980) density correction for open-path fluxes.
 
@@ -197,11 +233,319 @@ def wpl_correction(
 
 
 # ===================================================================
+# Spectral correction factors
+# ===================================================================
+
+
+def compute_spectral_correction_factor(
+    u_mean: float,
+    z_eff: float,
+    instrument: SiteConfig,
+    averaging_period: float = 30.0,
+    flux_type: str = "wT",
+    n_freqs: int = 10000,
+    f_nd_range: tuple[float, float] = (1e-4, 1e3),
+) -> float:
+    """
+    Compute the multiplicative correction factor for a flux.
+
+    The correction factor CF is:
+        CF = ∫ Co_model(f) d(ln f)  /  ∫ T(f) · Co_model(f) d(ln f)
+
+    where Co_model is the Kaimal (1972) model cospectrum and T(f) is the
+    combined transfer function.  The corrected flux is:
+        F_corrected = CF × F_measured
+
+    This follows Massman (2000) and is equivalent to the approach used in
+    EddyPro and other standard EC processing software.
+
+    Parameters
+    ----------
+    u_mean : float
+        Mean wind speed [m/s].
+    z_eff : float
+        Effective measurement height (z - d) [m].
+    instrument : SiteConfig
+        Instrument parameters.
+    averaging_period : float
+        Averaging period [minutes].
+    flux_type : str
+        'wT', 'wu', 'wCO2', or 'wH2O'.
+    n_freqs : int
+        Number of frequencies for numerical integration.
+    f_nd_range : tuple
+        Range of dimensionless frequencies for integration.
+
+    Returns
+    -------
+    float
+        Correction factor (≥ 1.0). Multiply measured flux by this value.
+    """
+    if u_mean < 0.5:
+        return np.nan
+
+    # Dimensionless frequency grid
+    f_nd = np.logspace(np.log10(f_nd_range[0]), np.log10(f_nd_range[1]), n_freqs)
+
+    # Convert to natural frequency: n = f_nd * U / z
+    freq = f_nd * u_mean / z_eff
+
+    # Model cospectrum (the "true" shape)
+    Co_model = kaimal_cospec_model(f_nd, flux_type)
+
+    # Combined transfer function
+    T = combined_transfer_function(
+        freq, u_mean, instrument, averaging_period, flux_type
+    )
+
+    # Integration in log-frequency space: ∫ Co d(ln f)
+    # Numerator: integral of true cospectrum
+    num = _trapezoid(Co_model, np.log(f_nd))
+
+    # Denominator: integral of attenuated cospectrum
+    den = _trapezoid(T * Co_model, np.log(f_nd))
+
+    if den > 1e-12:
+        cf = num / den
+    else:
+        cf = np.nan
+
+    return max(cf, 1.0)  # correction factor should always be ≥ 1
+
+
+def horst_analytical_correction(
+    u_mean: float,
+    z_eff: float,
+    tau_eff: float,
+    flux_type: str = "wT",
+) -> float:
+    """
+    Horst (1997) analytical correction factor.
+
+    A simple closed-form approximation that avoids numerical integration.
+    Good for quick estimates; less accurate than the full Massman approach
+    for complex instrument configurations.
+
+    Horst (1997) gives the measured-to-true flux ratio as
+
+        F_meas / F ≈ 1 / (1 + (2π n_m τ_eff)^α)
+
+    so the multiplicative correction factor is
+
+        CF = F / F_meas = 1 + (2π n_m τ_eff)^α
+
+    where n_m is the natural frequency of the cospectral peak, τ_eff is
+    the effective time constant, and α ≈ 7/8 for the Kaimal cospectrum
+    (unstable / neutral stratification).
+
+    Parameters
+    ----------
+    u_mean : float
+        Mean wind speed [m/s].
+    z_eff : float
+        Effective measurement height [m].
+    tau_eff : float
+        Effective combined time constant [s] (from all high-freq sources).
+    flux_type : str
+        'wT', 'wu', 'wCO2', or 'wH2O'.
+
+    Returns
+    -------
+    float
+        Correction factor (≥ 1.0).
+    """
+    if u_mean < 0.5 or tau_eff <= 0:
+        return 1.0
+
+    # Cospectral peak frequency (dimensionless) — neutral stability
+    if flux_type == "wu":
+        f_peak = 0.085  # Kaimal (1972) momentum
+    elif flux_type in _SCALAR_FLUXES:
+        f_peak = 0.065  # Kaimal (1972) scalars
+    else:
+        f_peak = 0.065
+
+    # Convert to natural frequency
+    n_peak = f_peak * u_mean / z_eff
+
+    # Horst (1997): α ≈ 7/8 for Kaimal cospectrum (unstable/neutral)
+    alpha = 7.0 / 8.0
+    cf = 1.0 + (2.0 * np.pi * n_peak * tau_eff) ** alpha
+
+    return max(cf, 1.0)
+
+
+# ===================================================================
+# Apply corrections to SpectralResult objects
+# ===================================================================
+
+
+def apply_spectral_corrections(
+    results: list[SpectralResult],
+    site_config: SiteConfig,
+    instrument: SiteConfig,
+    apply_high_freq: bool = True,
+    apply_low_freq: bool = True,
+    apply_wpl: bool = True,
+    method: str = "massman",
+    verbose: bool = False,
+) -> list[SpectralResult]:
+    """
+    Apply all spectral and density corrections to a list of SpectralResults.
+
+    Parameters
+    ----------
+    results : list[SpectralResult]
+        Output from process_file().
+    site_config : SiteConfig
+        Station configuration.
+    instrument : SiteConfig
+        Instrument parameters.
+    apply_high_freq : bool
+        Apply high-frequency spectral corrections (default True).
+    apply_low_freq : bool
+        Apply low-frequency corrections (default True).
+    apply_wpl : bool
+        Apply WPL density correction for open-path CO₂/H₂O (default True).
+        Only applied if instrument.irga_type == 'open_path'.
+    method : str
+        'massman' for full numerical integration (Massman 2000),
+        'horst' for the analytical approximation (Horst 1997).
+    verbose : bool
+        Print correction factors.
+
+    Returns
+    -------
+    list[SpectralResult]
+        The same results list, with corrections applied in-place.
+        New attributes added to qc_flags:
+          'cf_wT', 'cf_wu', 'cf_wCO2', 'cf_wH2O' — correction factors
+          'cov_wT_corrected', etc. — corrected covariances
+          'wpl_Fc', 'wpl_Fe' — WPL-corrected fluxes
+    """
+    z_eff = site_config.z_eff
+
+    for res in results:
+        if not np.isfinite(res.u_mean) or res.u_mean < 0.5:
+            continue
+
+        # ---------------------------------------------------------------
+        # Spectral correction factors
+        # ---------------------------------------------------------------
+        for flux_type in ["wT", "wu", "wCO2", "wH2O"]:
+            if method == "massman":
+                cf = compute_spectral_correction_factor(
+                    u_mean=res.u_mean,
+                    z_eff=z_eff,
+                    instrument=instrument,
+                    averaging_period=site_config.averaging_period,
+                    flux_type=flux_type,
+                )
+            elif method == "horst":
+                # Compute effective time constant for this flux
+                tau_eff = _sensor_tau_for_flux(flux_type, instrument)
+
+                # Add path-averaging equivalent time constant
+                # τ_path ≈ l / (2π U) for a path of length l
+                if res.u_mean > 0.5:
+                    tau_path = instrument.irga_path_length / (2.0 * np.pi * res.u_mean)
+                    tau_eff = np.sqrt(tau_eff**2 + tau_path**2)
+
+                cf = horst_analytical_correction(res.u_mean, z_eff, tau_eff, flux_type)
+            else:
+                raise ValueError(f"Unknown method: {method}")
+
+            res.qc_flags[f"cf_{flux_type}"] = cf
+
+            # Apply correction factor to covariances
+            cov_attr = f"cov_{flux_type}"
+            cov_raw = getattr(res, cov_attr)
+            if np.isfinite(cf) and np.isfinite(cov_raw):
+                res.qc_flags[f"{cov_attr}_corrected"] = cov_raw * cf
+
+            # Also correct the cospectral arrays by dividing by T(f)
+            # at each frequency bin (spectral correction)
+            if apply_high_freq and len(res.freq) > 0 and np.isfinite(cf):
+                T_f = combined_transfer_function(
+                    res.freq,
+                    res.u_mean,
+                    instrument,
+                    site_config.averaging_period,
+                    flux_type,
+                )
+
+                cosp_attr = f"cosp_{flux_type}"
+                cosp = getattr(res, cosp_attr)
+                if len(cosp) > 0:
+                    cosp_corrected = cosp / T_f
+                    setattr(res, cosp_attr, cosp_corrected)
+
+                    # Update normalised version
+                    ncosp_attr = f"ncosp_{flux_type}"
+                    cov_val = getattr(res, cov_attr)
+                    if abs(cov_val) > 1e-12:
+                        setattr(res, ncosp_attr, cosp_corrected / cov_val)
+
+        # ---------------------------------------------------------------
+        # WPL density correction (open-path only)
+        # ---------------------------------------------------------------
+        if apply_wpl and instrument.irga_type == "open_path":
+            # Need pressure — check if available, otherwise estimate
+            P_mean = getattr(res, "P_mean", None)
+            if P_mean is None or not np.isfinite(P_mean):
+                P_mean = 101.3  # standard atmosphere [kPa]
+
+            # Get mean scalar densities from raw covariances context
+            co2_mean = getattr(res, "co2_mean", None)
+            h2o_mean = getattr(res, "h2o_mean", None)
+
+            if (
+                co2_mean is not None
+                and h2o_mean is not None
+                and np.isfinite(co2_mean)
+                and np.isfinite(h2o_mean)
+            ):
+                # Use spectrally-corrected covariances if available
+                cov_wCO2 = res.qc_flags.get("cov_wCO2_corrected", res.cov_wCO2)
+                cov_wH2O = res.qc_flags.get("cov_wH2O_corrected", res.cov_wH2O)
+                H_corr = res.qc_flags.get("cov_wT_corrected", res.cov_wT) * 1200.0
+
+                wpl = wpl_correction(
+                    Fc_raw=cov_wCO2,
+                    Fe_raw=cov_wH2O,
+                    H=H_corr,
+                    T_mean=res.T_mean,
+                    P_mean=P_mean,
+                    co2_mean=co2_mean,
+                    h2o_mean=h2o_mean,
+                )
+                res.qc_flags["wpl_Fc"] = wpl["Fc_wpl"]
+                res.qc_flags["wpl_Fe"] = wpl["Fe_wpl"]
+                res.qc_flags["wpl_Fc_correction"] = wpl["Fc_correction"]
+                res.qc_flags["wpl_Fe_correction"] = wpl["Fe_correction"]
+
+        if verbose:
+            ts = res.timestamp_start
+            tstr = ts.strftime("%H:%M") if ts is not None else "??"
+            cfs = [
+                f"{res.qc_flags.get(f'cf_{ft}', np.nan):.3f}"
+                for ft in ["wT", "wu", "wCO2", "wH2O"]
+            ]
+            print(f"  {tstr}  CF: wT={cfs[0]} wu={cfs[1]} wCO2={cfs[2]} wH2O={cfs[3]}")
+
+    return results
+
+
+# ===================================================================
 # Convenience: store mean scalars during processing
 # ===================================================================
 
 
-def enrich_results_with_means(results, df, site_config):
+def enrich_results_with_means(
+    results: list[SpectralResult],
+    df: Any,
+    site_config: SiteConfig,
+) -> list[SpectralResult]:
     """
     Add mean scalar values (CO₂, H₂O, pressure) to SpectralResult objects.
 

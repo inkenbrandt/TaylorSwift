@@ -4,6 +4,7 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+.benchmarks/
 .coverage
 htmlcov/
 site/
