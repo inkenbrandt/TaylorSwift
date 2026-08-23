@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "taylorswift-spectra"
-version = "0.2.1"
+version = "0.2.2"
 description = "FFT-based (co)spectral analysis for eddy covariance time series"
 readme = "README.md"
 license = "MIT"
@@ -45,9 +45,14 @@ dev = [
     "mypy>=1.13",
 ]
 docs = [
-    "mkdocs>=1.5",
-    "mkdocs-material>=9.0",
-    "mkdocstrings[python]>=0.24",
+    # Upper bounds are deliberate. MkDocs 2.0 removes the plugin system that
+    # mkdocstrings and mkdocs-material both depend on, and Read the Docs
+    # resolves this extra fresh on every build, so an unbounded range would
+    # break the docs build the day 2.0 ships.
+    "mkdocs>=1.5,<2",
+    "mkdocs-material>=9.5,<10",
+    "mkdocstrings[python]>=0.24,<3",
+    "pymdown-extensions>=10.0",
 ]
 
 [project.urls]

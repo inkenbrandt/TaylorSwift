@@ -66,42 +66,78 @@ class SpectralResult:
     """
     Container for results from one averaging interval.
 
-    Attributes:
-        timestamp_start: Start of the averaging interval.
-        timestamp_end: End of the averaging interval.
-        u_mean: Mean streamwise wind [m/s].
-        wind_dir: Horizontal wind direction [degrees relative to sonic x-axis].
-        T_mean: Mean sonic temperature [°C].
-        ustar: Friction velocity [m/s].
-        L: Monin-Obukhov length [m].
-        zL: Stability parameter z/L (dimensionless).
-        H: Sensible heat flux [W/m²].
-        cov_wT: Raw covariance of vertical wind and temperature.
-        cov_wu: Raw covariance of vertical wind and streamwise wind.
-        cov_wCO2: Raw covariance of vertical wind and CO₂ density.
-        cov_wH2O: Raw covariance of vertical wind and H₂O density.
-        freq: Bin-centre frequencies [Hz].
-        freq_nd: Dimensionless frequency f = n*z/U.
-        cosp_wT: Area-preserving cospectrum n·Co_wT(n).
-        cosp_wu: Area-preserving cospectrum n·Co_wu(n).
-        cosp_wCO2: Area-preserving cospectrum n·Co_wCO2(n).
-        cosp_wH2O: Area-preserving cospectrum n·Co_wH2O(n).
-        ncosp_wT: Normalized cospectrum n·Co_wT(n) / cov(w'T').
-        ncosp_wu: Normalized cospectrum n·Co_wu(n) / cov(w'u').
-        ncosp_wCO2: Normalized cospectrum n·Co_wCO2(n) / cov(w'CO2').
-        ncosp_wH2O: Normalized cospectrum n·Co_wH2O(n) / cov(w'H2O').
-        spec_u: Normalized power spectrum n·S_u(n) / σ_u².
-        spec_v: Normalized power spectrum n·S_v(n) / σ_v².
-        spec_w: Normalized power spectrum n·S_w(n) / σ_w².
-        spec_T: Normalized power spectrum n·S_T(n) / σ_T².
-        ogive_wT: Cumulative cospectrum for w'T' (high to low frequency).
-        ogive_wu: Cumulative cospectrum for w'u' (high to low frequency).
-        ogive_wCO2: Cumulative cospectrum for w'CO2' (high to low frequency).
-        ogive_wH2O: Cumulative cospectrum for w'H2O' (high to low frequency).
-        co2_mean: Mean CO₂ density [mg m⁻³], populated by enrich_results_with_means().
-        h2o_mean: Mean H₂O density [g m⁻³], populated by enrich_results_with_means().
-        P_mean: Mean atmospheric pressure [kPa], populated by enrich_results_with_means().
-        qc_flags: Dictionary of quality control flags and intermediate results.
+    Attributes
+    ----------
+    timestamp_start
+        Start of the averaging interval.
+    timestamp_end
+        End of the averaging interval.
+    u_mean
+        Mean streamwise wind [m/s].
+    wind_dir
+        Horizontal wind direction [degrees relative to sonic x-axis].
+    T_mean
+        Mean sonic temperature [°C].
+    ustar
+        Friction velocity [m/s].
+    L
+        Monin-Obukhov length [m].
+    zL
+        Stability parameter z/L (dimensionless).
+    H
+        Sensible heat flux [W/m²].
+    cov_wT
+        Raw covariance of vertical wind and temperature.
+    cov_wu
+        Raw covariance of vertical wind and streamwise wind.
+    cov_wCO2
+        Raw covariance of vertical wind and CO₂ density.
+    cov_wH2O
+        Raw covariance of vertical wind and H₂O density.
+    freq
+        Bin-centre frequencies [Hz].
+    freq_nd
+        Dimensionless frequency f = n*z/U.
+    cosp_wT
+        Area-preserving cospectrum n·Co_wT(n).
+    cosp_wu
+        Area-preserving cospectrum n·Co_wu(n).
+    cosp_wCO2
+        Area-preserving cospectrum n·Co_wCO2(n).
+    cosp_wH2O
+        Area-preserving cospectrum n·Co_wH2O(n).
+    ncosp_wT
+        Normalized cospectrum n·Co_wT(n) / cov(w'T').
+    ncosp_wu
+        Normalized cospectrum n·Co_wu(n) / cov(w'u').
+    ncosp_wCO2
+        Normalized cospectrum n·Co_wCO2(n) / cov(w'CO2').
+    ncosp_wH2O
+        Normalized cospectrum n·Co_wH2O(n) / cov(w'H2O').
+    spec_u
+        Normalized power spectrum n·S_u(n) / σ_u².
+    spec_v
+        Normalized power spectrum n·S_v(n) / σ_v².
+    spec_w
+        Normalized power spectrum n·S_w(n) / σ_w².
+    spec_T
+        Normalized power spectrum n·S_T(n) / σ_T².
+    ogive_wT
+        Cumulative cospectrum for w'T' (high to low frequency).
+    ogive_wu
+        Cumulative cospectrum for w'u' (high to low frequency).
+    ogive_wCO2
+        Cumulative cospectrum for w'CO2' (high to low frequency).
+    ogive_wH2O
+        Cumulative cospectrum for w'H2O' (high to low frequency).
+    co2_mean
+        Mean CO₂ density [mg m⁻³], populated by enrich_results_with_means().
+    h2o_mean
+        Mean H₂O density [g m⁻³], populated by enrich_results_with_means().
+    P_mean
+        Mean atmospheric pressure [kPa], populated by enrich_results_with_means().
+    qc_flags
+        Dictionary of quality control flags and intermediate results.
     """
 
     timestamp_start: datetime | None = None

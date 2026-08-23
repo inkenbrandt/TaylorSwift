@@ -214,7 +214,7 @@ def _limit_run_length(mask: np.ndarray, max_consecutive: int) -> np.ndarray:
     edges = np.flatnonzero(np.diff(padded))
     starts, ends = edges[0::2], edges[1::2]  # ends exclusive
     long_runs = (ends - starts) > max_consecutive
-    for s, e in zip(starts[long_runs], ends[long_runs]):
+    for s, e in zip(starts[long_runs], ends[long_runs], strict=False):
         out[s:e] = False
     return out
 

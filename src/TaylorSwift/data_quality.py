@@ -435,8 +435,10 @@ class DataQuality:
         """
         Initialize data quality assessment.
 
-        Args:
-            use_wind_direction: Whether to include wind direction in quality assessment
+        Parameters
+        ----------
+        use_wind_direction
+            Whether to include wind direction in quality assessment
         """
         self.use_wind_direction = use_wind_direction
 
@@ -446,13 +448,16 @@ class DataQuality:
         """
         Calculate integral turbulence characteristics.
 
-        Args:
-            stability: StabilityParameters object
+        Parameters
+        ----------
+        stability
+            StabilityParameters object
 
-        Returns:
-            Tuple containing:
-            - ITC for momentum flux
-            - ITC for scalar flux
+        Returns
+        -------
+        Tuple containing:
+        - ITC for momentum flux
+        - ITC for scalar flux
         """
         z_L = stability.z / stability.L
 
@@ -485,11 +490,14 @@ class DataQuality:
         """
         Check wind direction relative to CSAT orientation.
 
-        Args:
-            wind_direction: Wind direction in degrees
+        Parameters
+        ----------
+        wind_direction
+            Wind direction in degrees
 
-        Returns:
-            Quality class (1-9) based on wind direction
+        Returns
+        -------
+        Quality class (1-9) based on wind direction
         """
         if not self.use_wind_direction:
             return QualityFlag.CLASS_1
@@ -507,12 +515,16 @@ class DataQuality:
         """
         Evaluate stationarity test results.
 
-        Args:
-            stationarity: StationarityTest object
-            flux_type: Type of flux ('momentum', 'heat', 'moisture', 'co2')
+        Parameters
+        ----------
+        stationarity
+            StationarityTest object
+        flux_type
+            Type of flux ('momentum', 'heat', 'moisture', 'co2')
 
-        Returns:
-            Quality class (1-9) based on stationarity
+        Returns
+        -------
+        Quality class (1-9) based on stationarity
         """
         # Get relevant RN value
         if flux_type == "momentum":
@@ -544,12 +556,16 @@ class DataQuality:
         """
         Evaluate integral turbulence characteristic test.
 
-        Args:
-            measured: Measured ITC
-            modeled: Modeled ITC
+        Parameters
+        ----------
+        measured
+            Measured ITC
+        modeled
+            Modeled ITC
 
-        Returns:
-            Quality class (1-9) based on ITC comparison
+        Returns
+        -------
+        Quality class (1-9) based on ITC comparison
         """
         # Calculate relative difference
         itc_diff = abs((measured - modeled) / modeled)
@@ -578,20 +594,26 @@ class DataQuality:
         """
         Perform comprehensive data quality assessment.
 
-        Args:
-            stability: StabilityParameters object
-            stationarity: StationarityTest object
-            wind_direction: Wind direction in degrees (optional)
-            flux_type: Type of flux to assess ('momentum', 'heat', 'moisture', 'co2')
+        Parameters
+        ----------
+        stability
+            StabilityParameters object
+        stationarity
+            StationarityTest object
+        wind_direction
+            Wind direction in degrees (optional)
+        flux_type
+            Type of flux to assess ('momentum', 'heat', 'moisture', 'co2')
 
-        Returns:
-            Dictionary containing:
-            - overall_flag: Final quality classification
-            - stationarity_flag: Quality based on stationarity
-            - itc_flag: Quality based on ITC
-            - wind_dir_flag: Quality based on wind direction
-            - itc_measured: Measured ITC value
-            - itc_modeled: Modeled ITC value
+        Returns
+        -------
+        Dictionary containing:
+        - overall_flag: Final quality classification
+        - stationarity_flag: Quality based on stationarity
+        - itc_flag: Quality based on ITC
+        - wind_dir_flag: Quality based on wind direction
+        - itc_measured: Measured ITC value
+        - itc_modeled: Modeled ITC value
         """
         # Calculate ITC
         itc_w, itc_T = self._calculate_integral_turbulence(stability)

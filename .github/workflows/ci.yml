@@ -69,3 +69,24 @@ jobs:
 
       - name: Run ruff check
         run: ruff check src/ tests/ benchmarks/
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Match the interpreter Read the Docs builds with.
+          python-version: "3.12"
+
+      - name: Install package with docs dependencies
+        run: pip install -e ".[docs]"
+
+      # --strict is the local equivalent of fail_on_warning in
+      # .readthedocs.yaml, so docs breakage surfaces here rather than on RTD.
+      - name: Build documentation
+        run: mkdocs build --strict

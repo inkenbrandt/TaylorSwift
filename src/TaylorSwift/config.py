@@ -83,20 +83,34 @@ class SiteConfig:
     Default values are for the Campbell Scientific IRGASON (integrated
     open-path sonic anemometer + CO₂/H₂O gas analyser).
 
-    Attributes:
-        sonic_path_length: Path length of the sonic anemometer [m].
-        sonic_path_separation: Separation between horizontal paths [m].
-        irga_path_length: Optical path length of the gas analyser [m].
-        irga_path_diameter: Optical path diameter of the gas analyser [m].
-        sensor_separation_lateral: Lateral separation perpendicular to wind [m].
-        sensor_separation_longitudinal: Longitudinal separation parallel to wind [m].
-        sensor_separation_vertical: Vertical separation [m].
-        tau_sonic_T: Time constant for sonic temperature [s].
-        tau_co2: Time constant for CO₂ sensor response [s].
-        tau_h2o: Time constant for H₂O sensor response [s].
-        tau_T: Time constant for sonic T response [s].
-        irga_type: Type of gas analyser ('open_path' or 'enclosed_path').
-        model: Instrument model name.
+    Attributes
+    ----------
+    sonic_path_length
+        Path length of the sonic anemometer [m].
+    sonic_path_separation
+        Separation between horizontal paths [m].
+    irga_path_length
+        Optical path length of the gas analyser [m].
+    irga_path_diameter
+        Optical path diameter of the gas analyser [m].
+    sensor_separation_lateral
+        Lateral separation perpendicular to wind [m].
+    sensor_separation_longitudinal
+        Longitudinal separation parallel to wind [m].
+    sensor_separation_vertical
+        Vertical separation [m].
+    tau_sonic_T
+        Time constant for sonic temperature [s].
+    tau_co2
+        Time constant for CO₂ sensor response [s].
+    tau_h2o
+        Time constant for H₂O sensor response [s].
+    tau_T
+        Time constant for sonic T response [s].
+    irga_type
+        Type of gas analyser ('open_path' or 'enclosed_path').
+    model
+        Instrument model name.
     """
 
     z_measurement: float = 3.0  # measurement height [m]

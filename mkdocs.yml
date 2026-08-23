@@ -1,35 +1,170 @@
 site_name: TaylorSwift
+site_description: FFT-based (co)spectral analysis for eddy covariance time series
+site_author: Paul Inkenbrandt
+site_url: https://taylorswift.readthedocs.io/
+copyright: Copyright &copy; Paul Inkenbrandt — MIT License
+
+repo_url: https://github.com/inkenbrandt/TaylorSwift
+repo_name: inkenbrandt/TaylorSwift
+edit_uri: edit/main/docs/
+
 theme:
   name: material
   palette:
-    primary: teal
-    accent: cyan
+    # Palette toggle: follows the reader's system preference first.
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
   features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
     - navigation.sections
-    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
     - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.tooltips
+  icon:
+    repo: fontawesome/brands/github
 
 plugins:
   - search
   - mkdocstrings:
+      default_handler: python
       handlers:
         python:
           paths: [src]
           options:
+            # The codebase documents itself in NumPy style ("Parameters
+            # ----------"). Without this the default Google parser drops the
+            # sections into the body as unstyled prose.
+            docstring_style: numpy
+            docstring_section_style: table
             show_source: true
             show_root_heading: true
-            show_category_heading: true
-
-nav:
-  - Home: index.md
-  - Quickstart: quickstart.md
-  - API Reference: api.md
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            members_order: source
+            filters: ["!^_"]
+            heading_level: 2
+            show_if_no_docstring: false
+            docstring_options:
+              ignore_init_summary: true
 
 markdown_extensions:
+  - abbr
   - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.caret
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        # Renders ```mermaid blocks as diagrams instead of inert code.
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
-  - attr_list
-  - md_in_html
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/inkenbrandt/TaylorSwift
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/taylorswift-spectra/
+
+watch:
+  - src/TaylorSwift
+
+nav:
+  - Home:
+      - Overview: index.md
+      - Installation: installation.md
+      - Quickstart: quickstart.md
+  - User Guide:
+      - Configuration: guide/configuration.md
+      - Reading data: guide/io.md
+      - Raw-data screening: guide/screening.md
+      - Despiking: guide/despiking.md
+      - Spectra and cospectra: guide/spectra.md
+      - Spectral corrections: guide/corrections.md
+      - Quality control: guide/quality-control.md
+      - Exporting results: guide/results.md
+      - Plotting: guide/plotting.md
+      - Legacy flux pipelines: guide/pipelines.md
+  - API Reference:
+      - Overview: api/index.md
+      - Configuration: api/config.md
+      - Core: api/core.md
+      - Cospectra: api/cospectra.md
+      - Rotations: api/rotations.md
+      - Screening: api/screening.md
+      - Despike: api/despike.md
+      - Corrections: api/corrections.md
+      - Transfer functions: api/transfer_functions.md
+      - Data quality: api/data_quality.md
+      - Results: api/results.md
+      - I/O: api/io.md
+      - Plotting: api/plotting.md
+      - Pipelines: api/pipelines.md
+      - Covariance: api/covariance.md
+      - Thermodynamics: api/thermo.md
+      - Constants: api/constants.md
+      - Frame utilities: api/frame_utils.md
+      - Compatibility: api/compat.md
+  - About:
+      - Contributing: contributing.md
+      - Changelog: changelog.md
+      - References: references.md
