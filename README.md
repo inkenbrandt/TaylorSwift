@@ -19,7 +19,14 @@ The name is in honor of physicist Sir Geoffrey Ingram Taylor. FFT-based (co)spec
 ## Installation
 
 ```bash
-pip install TaylorSwift
+pip install taylorswift-spectra
+```
+
+The distribution is named `taylorswift-spectra` on PyPI (the shorter name was
+already taken); the import name is unchanged:
+
+```python
+import TaylorSwift
 ```
 
 For development:

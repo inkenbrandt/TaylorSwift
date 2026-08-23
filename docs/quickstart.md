@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-pip install TaylorSwift
+pip install taylorswift-spectra
 ```
 
 ## 1. Configure your site

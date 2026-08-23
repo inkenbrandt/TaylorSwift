@@ -4,7 +4,7 @@ TaylorSwift — Eddy Covariance Cospectral Analysis.
 
 from importlib import import_module
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 _EXPORTS = {
     # Core spectral computation

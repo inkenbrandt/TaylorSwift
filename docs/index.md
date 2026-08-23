@@ -19,7 +19,7 @@ The name is in honor of physicist Sir Geoffrey Ingram Taylor. FFT-based (co)spec
 ## Installation
 
 ```bash
-pip install TaylorSwift
+pip install taylorswift-spectra
 ```
 
 For development:

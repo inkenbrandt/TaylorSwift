@@ -16,3 +16,9 @@ site/
 .venv
 TaylorSwift.egg-info
 examples/data/TOA5_23861_Time_Series_855_2023_06_10_0000.dat
+/.claude
+/.benchmarks
+/.mypy_cache
+/.pytest_cache
+/.ruff_cache
+/src/TaylorSwift/__pycache__

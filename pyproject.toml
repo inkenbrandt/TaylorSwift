@@ -1,13 +1,17 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "TaylorSwift"
-version = "0.2.0"
+name = "taylorswift-spectra"
+version = "0.2.1"
 description = "FFT-based (co)spectral analysis for eddy covariance time series"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Paul Inkenbrandt", email = "paulinkenbrandt@utah.gov" },
+]
 requires-python = ">=3.10"
 keywords = ["eddy covariance", "micrometeorology", "turbulence", "spectra", "flux"]
 classifiers = [
@@ -47,6 +51,7 @@ docs = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/inkenbrandt/TaylorSwift"
 Repository = "https://github.com/inkenbrandt/TaylorSwift"
 Issues = "https://github.com/inkenbrandt/TaylorSwift/issues"
 
