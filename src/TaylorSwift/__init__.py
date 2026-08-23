@@ -4,7 +4,10 @@ TaylorSwift — Eddy Covariance Cospectral Analysis.
 
 from importlib import import_module
 
-__version__ = "0.2.1"
+# The distribution is published as `taylorswift-spectra` because the import
+# name was already claimed on PyPI by an unrelated project, so the version
+# has to be looked up under the distribution name rather than `__name__`.
+_DISTRIBUTION_NAME = "taylorswift-spectra"
 
 _EXPORTS = {
     # Core spectral computation
@@ -78,6 +81,20 @@ __all__ = sorted(_EXPORTS)
 
 
 def __getattr__(name: str):
+    # Resolved lazily, like the exports below: importing `importlib.metadata`
+    # costs more than the attribute is usually worth, and reading it walks
+    # the install metadata on disk.
+    if name == "__version__":
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            value = version(_DISTRIBUTION_NAME)
+        except PackageNotFoundError:
+            # Running from a source tree that was never installed.
+            value = "0.0.0.dev0"
+        globals()["__version__"] = value
+        return value
+
     if name not in _EXPORTS:
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
@@ -89,4 +106,6 @@ def __getattr__(name: str):
 
 
 def __dir__():
-    return sorted(list(globals().keys()) + list(__all__))
+    # `__version__` is listed explicitly: it only enters globals() once it has
+    # been accessed, but it should always be discoverable.
+    return sorted(set(globals()) | set(__all__) | {"__version__"})
