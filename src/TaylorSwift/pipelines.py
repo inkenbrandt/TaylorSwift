@@ -76,6 +76,7 @@ def _correct_kh20_oxygen(Uz_Ta: float, P: float, T: float, config: FluxConfig) -
 
 
 def _duration_days(df: pd.DataFrame) -> float:
+    """Calculate the duration of the averaging period in days."""
     if isinstance(df.index, pd.DatetimeIndex) and len(df.index) > 1:
         span = df.index[-1] - df.index[0]
         return span.total_seconds() / 86400.0
@@ -89,6 +90,7 @@ def _duration_days(df: pd.DataFrame) -> float:
 
 
 def _apply_rename(df: pd.DataFrame, rename_map: dict | None) -> pd.DataFrame:
+    """Apply column renaming to a DataFrame using a default mapping and an optional user-provided mapping."""
     mapping = dict(_DEFAULT_RENAME_MAP)
     if rename_map:
         mapping.update(rename_map)
@@ -96,6 +98,7 @@ def _apply_rename(df: pd.DataFrame, rename_map: dict | None) -> pd.DataFrame:
 
 
 def _despike_columns(df: pd.DataFrame, columns: list[str], suffix: str) -> pd.DataFrame:
+    """Apply despiking to specified columns of a DataFrame, appending a suffix to the new columns."""
     for col in columns:
         if col in df.columns:
             df[col + suffix] = despike.despike_med_mod(df[col])
@@ -106,6 +109,20 @@ def _despike_columns(df: pd.DataFrame, columns: list[str], suffix: str) -> pd.Da
 # Core flux computation (shared by both pipelines once df has canonical cols)
 # ---------------------------------------------------------------------------
 def _compute_fluxes(df: pd.DataFrame, config: FluxConfig) -> pd.Series:
+    """Compute fluxes and diagnostics from a DataFrame with canonical columns, using the provided configuration.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame with canonical columns.
+    config : FluxConfig
+        The configuration for the flux computation.
+
+    Returns
+    -------
+    pd.Series
+        The computed fluxes and diagnostics.
+    """
     # Required columns after harmonisation: Ux, Uy, Uz, Ts (K), pV (kg m-3),
     # Pr (Pa), E, Q, Tsa, Sd.
     Ux_raw = df["Ux"].to_numpy(dtype=float)
@@ -276,6 +293,23 @@ def run_irga(df, config: FluxConfig, *, rename_map=None, ts_col=None) -> pd.Seri
     Returns a 13-element :class:`pandas.Series` (``Ta``, ``Td``, ``D``,
     ``Ustr``, ``zeta``, ``H``, ``StDevUz``, ``StDevTa``, ``direction``,
     ``exchange``, ``lambdaE``, ``ET``, ``Uxy``).
+
+    Parameters
+    ----------
+    df : pd.DataFrame or polars.DataFrame or str or bytes or pathlib.Path
+        The input data frame or a file path to read it from.
+    config : FluxConfig
+        The configuration for the flux computation.
+    rename_map : dict, optional
+        A dictionary mapping old column names to new column names.
+    ts_col : str, optional
+        The name of the timestamp column to convert to datetime.
+        If not provided, the function will attempt to infer the timestamp column.
+
+    Returns
+    -------
+    pd.Series
+        The computed fluxes and diagnostics.
     """
     df = normalize_input_frame(df, rename_map=rename_map, ts_col=ts_col)
     df = _apply_rename(df, rename_map).copy()
@@ -330,6 +364,23 @@ def run_kh20(df, config: FluxConfig, *, rename_map=None, ts_col=None) -> pd.Seri
     ``Ta`` (°C), ``Pr`` (kPa). Vapour pressure ``Ea`` (kPa) is derived from
     ``Ta`` via Tetens if absent; KH-20 output ``volt_KH20`` (mV) — if
     supplied — is log-transformed for the *Kw* calibration.
+
+    Parameters
+    ----------
+    df : pd.DataFrame or polars.DataFrame or str or bytes or pathlib.Path
+        The input data frame or a file path to read it from.
+    config : FluxConfig
+        The configuration for the flux computation.
+    rename_map : dict, optional
+        A dictionary mapping old column names to new column names.
+    ts_col : str, optional
+        The name of the timestamp column to convert to datetime.
+        If not provided, the function will attempt to infer the timestamp column.
+
+    Returns
+    -------
+    pd.Series
+        The computed fluxes and diagnostics.
     """
     df = normalize_input_frame(df, rename_map=rename_map, ts_col=ts_col)
     df = _apply_rename(df, rename_map).copy()

@@ -12,6 +12,19 @@ from .frame_utils import rolling_median_centered
 
 
 def despike(arr, nstd: float = 4.5) -> np.ndarray:
+    """
+    Remove outliers from a time series using a standard deviation threshold.
+
+    Parameters:
+    -----------
+
+    arr (_type_): sorted numpy array of values to despike
+    nstd (float, optional): Number of standard deviations to use as the threshold. Defaults to 4.5.
+
+    Returns
+    -------
+    np.ndarray: despiked array with outliers replaced by NaN and interpolated values.
+    """
     arr = np.asarray(arr, dtype=float)
     stdd = np.nanstd(arr) * nstd
     avg = np.nanmean(arr)
@@ -24,9 +37,26 @@ def despike(arr, nstd: float = 4.5) -> np.ndarray:
     return y
 
 
-def despike_ewma_fb(
-    df_column: pd.Series, span: int | float, delta: float
-) -> np.ndarray:
+def despike_ewma_fb(df_column: pd.Series,
+                    span: int | float,
+                    delta: float) -> np.ndarray:
+    """
+    Despike a time series using the exponential weighted moving average (EWMA) forward-backward method.
+
+    Parameters
+    ----------
+    df_column : pd.Series
+        The time series to despike.
+    span : int | float
+        The span of the EWMA.
+    delta : float
+        The threshold for identifying outliers.
+
+    Returns
+    -------
+    np.ndarray
+        The despiked time series.
+    """
     fwd = pd.Series.ewm(df_column, span=span).mean()
     bwd = pd.Series.ewm(df_column[::-1], span=span).mean()
     stacked_ewma = np.vstack((fwd, bwd[::-1]))
@@ -36,9 +66,28 @@ def despike_ewma_fb(
     return np.where(cond_delta, np.nan, np_spikey)
 
 
-def despike_med_mod(
-    df_column: pd.Series, win: int = 800, fill_na: bool = True, addNoise: bool = False
-) -> pd.Series:
+def despike_med_mod(df_column: pd.Series,
+                    win: int = 800,
+                    fill_na: bool = True,
+                    addNoise: bool = False) -> pd.Series:
+    """Despike a time series using the median filter method.
+
+    Parameters
+    ----------
+    df_column : pd.Series
+        The time series to despike.
+    win : int, optional
+        The window size for the median filter. Defaults to 800.
+    fill_na : bool, optional
+        Whether to fill NaN values with interpolated values. Defaults to True.
+    addNoise : bool, optional
+        Whether to add noise to the filled NaN values. Defaults to False.
+
+    Returns
+    -------
+    pd.Series
+        The despiked time series.
+    """
     try:
         import statsmodels.api as sm
     except ImportError as exc:
@@ -80,6 +129,29 @@ def despike_quart_filter(
     bot_quant: float = 0.03,
     thresh: float | pd.Series | None = None,
 ) -> pd.Series:
+    """
+    Despike a time series using the quartile filter method.
+
+    Parameters
+    ----------
+    df_column : pd.Series
+        The time series to despike.
+    win : int, optional
+        The window size for the rolling quantiles. Defaults to 600.
+    fill_na : bool, optional
+        Whether to fill NaN values with interpolated values. Defaults to True.
+    top_quant : float, optional
+        The upper quantile to use for filtering. Defaults to 0.97.
+    bot_quant : float, optional
+        The lower quantile to use for filtering. Defaults to 0.03.
+    thresh : float | pd.Series | None, optional
+        The threshold for identifying outliers. If None, the difference between the upper and lower quantiles is used. Defaults to None.
+
+    Returns
+    -------
+    pd.Series
+        The despiked time series.
+    """
     upper = df_column.rolling(win, center=True).quantile(top_quant)
     lower = df_column.rolling(win, center=True).quantile(bot_quant)
     med = df_column.rolling(win, center=True).median()
@@ -541,6 +613,9 @@ def spike_detection(
     array([200, 600])
     >>> x_clean = np.where(mask, np.nan, x)   # simple removal
     """
+    if not isinstance(window_size, (int, np.integer)) or window_size <= 0:
+        raise ValueError("window_size must be a positive integer")
+
     data = np.asarray(data)
     spikes = np.zeros_like(data, dtype=bool)
     n = len(data)

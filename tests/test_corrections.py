@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from TaylorSwift.config import InstrumentConfig
+from TaylorSwift.config import InstrumentConfig, SiteConfig
+from TaylorSwift.corrections import apply_spectral_corrections, wpl_correction
 from TaylorSwift.cospectra import (
     combined_transfer_function,
     horst_analytical_correction,
@@ -303,3 +304,51 @@ class TestHorstAnalyticalCorrection:
         cf = horst_analytical_correction(5.0, 2.0, tau_eff=3.0, flux_type="wT")
         assert np.isfinite(cf)
         assert cf == pytest.approx(3.663086, abs=1e-5)
+
+
+class TestCorrections:
+    def test_wpl_zero_fluxes_has_zero_corrections(self):
+        result = wpl_correction(0.0, 0.0, 0.0, 20.0, 101.3, 400.0, 10.0)
+        assert result["Fc_correction"] == pytest.approx(0.0)
+        assert result["Fe_correction"] == pytest.approx(0.0)
+
+    def test_apply_horst_corrections_updates_covariance_and_cospectra(
+        self, spectral_result_stub
+    ):
+        site = SiteConfig(z_measurement=3.0, z_canopy=0.0, sampling_freq=20.0)
+        instrument = InstrumentConfig()
+        original_cov = spectral_result_stub.cov_wT
+        original_cosp = spectral_result_stub.cosp_wT.copy()
+
+        result = apply_spectral_corrections(
+            [spectral_result_stub], site, instrument, method="horst", apply_wpl=False
+        )[0]
+
+        factor = result.qc_flags["cf_wT"]
+        assert factor > 1.0
+        assert result.qc_flags["cov_wT_corrected"] == pytest.approx(original_cov * factor)
+        np.testing.assert_allclose(result.cosp_wT, original_cosp)
+
+    def test_apply_open_path_wpl_uses_standard_pressure_fallback(
+        self, spectral_result_stub
+    ):
+        site = SiteConfig(z_measurement=3.0, z_canopy=0.0, sampling_freq=20.0)
+        instrument = InstrumentConfig()
+        spectral_result_stub.co2_mean = 400.0
+        spectral_result_stub.h2o_mean = 10.0
+        spectral_result_stub.T_mean = 20.0
+
+        result = apply_spectral_corrections(
+            [spectral_result_stub], site, instrument,
+            apply_high_freq=False, apply_wpl=True, method="horst",
+        )[0]
+
+        expected = wpl_correction(
+            spectral_result_stub.qc_flags["cov_wCO2_corrected"],
+            spectral_result_stub.qc_flags["cov_wH2O_corrected"],
+            spectral_result_stub.qc_flags["cov_wT_corrected"] * 1200.0,
+            spectral_result_stub.T_mean,
+            101.3, spectral_result_stub.co2_mean, spectral_result_stub.h2o_mean,
+        )
+        assert result.qc_flags["wpl_Fc"] == pytest.approx(expected["Fc_wpl"])
+        assert result.qc_flags["wpl_Fe"] == pytest.approx(expected["Fe_wpl"])

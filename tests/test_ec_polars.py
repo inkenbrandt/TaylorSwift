@@ -16,7 +16,19 @@ from TaylorSwift.frame_utils import (
     assign as _assign,
 )
 from TaylorSwift.frame_utils import (
+    first_last_index_duration as _first_last_index_duration,
+)
+from TaylorSwift.frame_utils import (
     get_series as _get_series,
+)
+from TaylorSwift.frame_utils import (
+    interpolate_bfill_ffill as _interpolate_bfill_ffill,
+)
+from TaylorSwift.frame_utils import (
+    normalize_input_frame as _normalize_input_frame,
+)
+from TaylorSwift.frame_utils import (
+    rolling_median_centered as _rolling_median_centered,
 )
 from TaylorSwift.frame_utils import (
     to_pl_df as _to_pl_df,
@@ -250,3 +262,44 @@ class TestCompatHelpers:
         df = self._pd_df()
         result = _assign(df, c=np.array([7.0, 8.0, 9.0]))
         assert "c" in result.columns
+
+
+class TestFrameUtils:
+    def test_normalize_input_frame_accepts_polars_and_converts_timestamp(self):
+        frame = pl.DataFrame(
+            {"time": ["2023-01-01 00:00:00"], "value": [1.0]}
+        )
+        result = _normalize_input_frame(frame, ts_col="time")
+        assert isinstance(result, pd.DataFrame)
+        assert pd.api.types.is_datetime64_any_dtype(result["time"])
+
+    def test_normalize_input_frame_applies_rename_map(self):
+        frame = pd.DataFrame({"old": [1.0]})
+
+        def rename(frame, rename_map=None):
+            return frame.rename(columns=rename_map)
+
+        result = _normalize_input_frame(
+            frame, rename_func=rename, rename_map={"old": "new"}
+        )
+        assert list(result.columns) == ["new"]
+
+    def test_normalize_input_frame_rejects_invalid_input(self):
+        with pytest.raises(TypeError, match="pandas.DataFrame"):
+            _normalize_input_frame([1, 2, 3])
+
+    def test_first_last_index_duration_supports_datetime_index_and_timestamp_column(self):
+        index = pd.date_range("2023-01-01", periods=3, freq="h")
+        assert _first_last_index_duration(
+            pd.DataFrame({"value": [1, 2, 3]}, index=index)
+        ) == pytest.approx(2 / 24)
+
+        frame = pd.DataFrame({"TIMESTAMP": index})
+        assert _first_last_index_duration(frame, unit="h") == pytest.approx(2 * 3600)
+
+    def test_interpolate_and_rolling_helpers_fill_edges(self):
+        values = pl.Series("value", [1.0, 2.0, 3.0, 4.0, 5.0])
+        interpolated = _interpolate_bfill_ffill(values)
+        centered = _rolling_median_centered(values, 3)
+        assert interpolated.to_list() == [1.0, 2.0, 3.0, 4.0, 5.0]
+        assert centered.to_list() == [2.0, 2.0, 3.0, 4.0, 4.0]

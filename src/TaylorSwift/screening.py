@@ -258,6 +258,13 @@ def spike_test(
     slightly relaxed threshold, up to ``spike_max_passes`` times or until no
     new spikes appear.
 
+    Parameters
+    ----------
+    x : array-like
+        The input data to be screened.
+    config : ScreeningConfig or None, optional
+        The screening configuration. If None, a default configuration is used.
+
     Returns
     -------
     n_spikes : int
@@ -307,6 +314,19 @@ def amplitude_resolution_test(
     range; a coarsely resolved signal populates only a few bins and leaves many
     empty.  Returns ``(flag, max_empty_fraction)`` where ``flag`` is True when
     any window exceeds ``ampres_empty_fraction`` empty bins.
+
+    Parameters
+    ----------
+    x : array-like
+        The input data to be screened.
+    config : ScreeningConfig or None, optional
+        The screening configuration. If None, a default configuration is used.
+        Default is None.
+
+    Returns
+    -------
+    tuple[bool, float]
+        A tuple of (flag, max_empty_fraction).
     """
     cfg = config or ScreeningConfig()
     x = np.asarray(x, dtype=np.float64)
@@ -351,6 +371,19 @@ def dropout_test(
       exceeds ``dropout_extreme_fraction`` (a stuck signal at a distribution
       tail, treated as a hard failure).
     * ``dropout_fraction`` — longest run length as a fraction of the record.
+
+    Parameters
+    ----------
+    x : array-like
+        The input data to be screened.
+    config : ScreeningConfig or None, optional
+        The screening configuration. If None, a default configuration is used.
+        Default is None.
+
+    Returns
+    -------
+    tuple[bool, bool, float]
+        A tuple of (soft_flag, extreme_flag, dropout_fraction).
     """
     cfg = config or ScreeningConfig()
     x = np.asarray(x, dtype=np.float64)
@@ -398,6 +431,18 @@ def absolute_limits_test(
 
     Returns ``(flag, n_out_of_range)``.  A ``limits`` of ``None`` skips the
     test (returns ``(False, 0)``).
+
+    Parameters
+    ----------
+    x : array-like
+        The input data to be screened.
+    limits : tuple[float, float] or None
+        The absolute limits (min, max) for the variable.  If None, the test is skipped.
+
+    Returns
+    -------
+    tuple[bool, int]
+        A tuple of (flag, n_out_of_range).
     """
     if limits is None:
         return False, 0
@@ -417,6 +462,18 @@ def higher_moment_test(
 
     Kurtosis is the Pearson definition (3 for a normal distribution).  Returns
     ``(skewness, kurtosis, soft_flag, hard_flag)``.
+
+    Parameters
+    ----------
+    x : array-like
+        The input data to be screened.
+    config : ScreeningConfig or None, optional
+        The screening configuration. If None, a default configuration is used.
+
+    Returns
+    -------
+    tuple[float, float, bool, bool]
+        A tuple of (skewness, kurtosis, soft_flag, hard_flag).
     """
     cfg = config or ScreeningConfig()
     x = np.asarray(x, dtype=np.float64)

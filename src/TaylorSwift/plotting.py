@@ -63,7 +63,7 @@ def plot_cospectra(
     show_slope: bool = True,
     figsize=(14, 10),
     save_path=None,
-):
+)-> tuple[plt.Figure, list[plt.Axes]]:
     """
     Plot normalised cospectra (w'T', w'u', w'CO₂', w'H₂O') in a 2×2 grid.
 
@@ -87,6 +87,7 @@ def plot_cospectra(
     Returns
     -------
     fig, axes
+        The created figure and axes objects.
     """
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     ax_wT, ax_wu = axes[0]
@@ -190,11 +191,29 @@ def plot_spectra(
     show_model: bool = True,
     figsize=(14, 10),
     save_path=None,
-):
+) -> tuple[plt.Figure, list[plt.Axes]]:
     """
     Plot normalised power spectra (u, v, w, T) in a 2×2 grid.
 
     Normalization: n·S(n) / σ² where σ² is the variance of the component.
+
+    Parameters
+    ----------
+    results : list[SpectralResult]
+        Output of process_file or a list of process_interval calls.
+    stability_range : tuple
+        (min z/L, max z/L) — only plot intervals within this range.
+    show_model : bool
+        If True, show the Kaimal model.
+    figsize : tuple
+        Figure size. Default (14, 10).
+    save_path : str or None
+        If given, save figure to this path.
+
+    Returns
+    -------
+    fig, axes
+        The created figure and axes objects.
     """
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     ax_u, ax_v = axes[0]
@@ -265,13 +284,29 @@ def plot_ogive(
     stability_range=(-2.0, 2.0),
     figsize=(14, 5),
     save_path=None,
-):
+) -> tuple[plt.Figure, list[plt.Axes]]:
     """
     Plot ogives (cumulative cospectra from high to low frequency).
 
     Ogives that flatten at low frequencies indicate that the chosen averaging
     period captures all of the turbulent flux.  If the ogive is still rising
     at the lowest resolved frequency, flux is being lost.
+
+    Parameters
+    ----------
+    results : list[SpectralResult]
+        Output of process_file or a list of process_interval calls.
+    stability_range : tuple
+        (min z/L, max z/L) — only plot intervals within this range.
+    figsize : tuple
+        Figure size.
+    save_path : str or None
+        If given, save figure to this path.
+
+    Returns
+    -------
+    fig, axes
+        The created figure and axes objects.
     """
     fig, axes = plt.subplots(1, 4, figsize=figsize, sharey=False)
 
@@ -327,11 +362,27 @@ def plot_ogive(
 # ---------------------------------------------------------------------------
 # Summary time-series plot
 # ---------------------------------------------------------------------------
-def plot_summary_timeseries(results, figsize=(14, 10), save_path=None):
+def plot_summary_timeseries(results, figsize=(14, 10), save_path=None)-> tuple[plt.Figure, list[plt.Axes]]:
     """
     Plot key turbulence parameters vs time for QC overview.
 
     Shows: wind speed, u*, z/L, sensible heat flux, and covariances.
+
+    Parameters
+    ----------
+    results : list[SpectralResult]
+        Output of process_file or a list of process_interval calls.
+    figsize : tuple
+        Figure size. Default (14, 10).
+    save_path : str, optional
+        The path to save the figure to. If not provided, the figure will not be saved.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The created figure object.
+    axes : list[matplotlib.axes.Axes]
+        The created axes objects.
     """
     import matplotlib.dates as mdates
 

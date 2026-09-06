@@ -20,6 +20,25 @@ import numpy as np
 def determine_wind_dir(
     uxavg: float | None, uyavg: float | None, sonic_dir: float, path_dist_u: float
 ) -> tuple[float, float]:
+    """
+    Determine the wind direction and path length.
+
+    Parameters
+    ----------
+    uxavg : float or None
+        Mean x-component of the wind.
+    uyavg : float or None
+        Mean y-component of the wind.
+    sonic_dir : float
+        Direction of the sonic anemometer (degrees from north).
+    path_dist_u : float
+        Distance of the u-component from the sonic anemometer.
+
+    Returns
+    -------
+    tuple[float, float]
+        The path length and wind direction.
+    """
     if uxavg is None or uyavg is None:
         raise ValueError("uxavg and uyavg are required")
     wind_dir = np.degrees(np.arctan2(uyavg, uxavg))
@@ -76,7 +95,22 @@ def rotate_velocities(
     sinTheta: float,
     cosTheta: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Apply the double rotation defined by :func:`coord_rotation` angles."""
+    """Apply the double rotation defined by :func:`coord_rotation` angles.
+
+    Parameters
+    ----------
+    Ux, Uy, Uz : array-like
+        The original wind components.
+    cosv, sinv : float
+        Cosine/sine of the yaw angle.
+    sinTheta, cosTheta : float
+        Sine/cosine of the pitch angle.
+
+    Returns
+    -------
+    Uxr, Uyr, Uzr : np.ndarray
+        The rotated wind components.
+    """
     Uxr = Ux * cosTheta * cosv + Uy * cosTheta * sinv + Uz * sinTheta
     Uyr = Uy * cosv - Ux * sinv
     Uzr = Uz * cosTheta - Ux * sinTheta * cosv - Uy * sinTheta * sinv
@@ -129,7 +163,30 @@ def rotate_covariances(
     cosTheta: float,
     scalar_key: str = "Ts",
 ) -> dict[str, float]:
-    """Rotate scalar and momentum covariances into the streamline frame."""
+    """Rotate scalar and momentum covariances into the streamline frame.
+
+    Parameters
+    ----------
+    covar : dict[str, float]
+        The original covariances.
+    errvals : dict[str, float]
+        The error values for the covariances.
+    cosv : float
+        Cosine of the yaw angle.
+    sinv : float
+        Sine of the yaw angle.
+    sinTheta : float
+        Sine of the pitch angle.
+    cosTheta : float
+        Cosine of the pitch angle.
+    scalar_key : str, optional
+        The key for the scalar field (default "Ts").
+
+    Returns
+    -------
+    dict[str, float]
+        The rotated covariances.
+    """
     cov = dict(covar)
 
     Ux_s = cov.get(f"Ux-{scalar_key}", 0.0)

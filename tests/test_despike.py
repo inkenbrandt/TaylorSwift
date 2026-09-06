@@ -6,10 +6,13 @@ these tests pin the new implementation to a reference copy of the original
 per-sample loop, expecting *identical* boolean masks.
 """
 
+from datetime import datetime
+
 import numpy as np
+import polars as pl
 import pytest
 
-from TaylorSwift.despike import spike_detection
+from TaylorSwift.despike import rolling_sigma_filter, spike_detection
 
 
 def _reference_spike_detection(data, window_size=100, z_threshold=4.0):
@@ -106,3 +109,32 @@ class TestSpikeDetectionEquivalence:
         mask = spike_detection(x)
         assert mask.shape == x.shape
         assert mask.dtype == bool
+
+    def test_nonpositive_window_is_rejected(self):
+        with pytest.raises(ValueError):
+            spike_detection([1.0, 2.0], window_size=0)
+
+    def test_slow_ramp_is_not_flagged_as_isolated_spike(self):
+        x = np.linspace(0.0, 10.0, 201)
+        assert not spike_detection(x, window_size=31, z_threshold=4.0).any()
+
+
+class TestRollingSigmaFilter:
+    def test_sorts_time_and_drops_stats_when_requested(self):
+        frame = pl.DataFrame(
+            {
+                "TIMESTAMP": [
+                    datetime(2023, 1, 1, 0, 0, 2),
+                    datetime(2023, 1, 1, 0, 0, 0),
+                    datetime(2023, 1, 1, 0, 0, 1),
+                ],
+                "Uz": [0.0, 0.0, 20.0],
+            }
+        )
+        result = rolling_sigma_filter(
+            frame, period="3s", sigma=0.5, keep_stats=False
+        )
+        assert result["TIMESTAMP"].is_sorted()
+        assert "Uz_roll_mean" not in result.columns
+        assert "Uz_roll_std" not in result.columns
+        assert result["Uz_filtered"].null_count() == 1

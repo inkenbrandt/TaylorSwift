@@ -310,6 +310,13 @@ def spectra_to_dataframe(results: Sequence[SpectralResult]) -> pl.DataFrame:
     ``spec_*``, ``ogive_*``).  Intervals with empty frequency arrays (e.g.
     skipped by QC) contribute no rows.
 
+    Parameters
+    ----------
+    results : list[SpectralResult]
+        Output of :func:`TaylorSwift.core.process_file` (optionally after
+        :func:`TaylorSwift.corrections.apply_spectral_corrections` /
+        ``run_qc``).
+
     Returns
     -------
     pl.DataFrame
@@ -352,7 +359,24 @@ def results_to_csv(
     path: str | Path,
     include_qc: bool = True,
 ) -> pl.DataFrame:
-    """Write :func:`results_to_dataframe` to CSV; returns the frame."""
+    """Write :func:`results_to_dataframe` to CSV; returns the frame.
+
+    Parameters
+    ----------
+    results : list[SpectralResult]
+        Output of :func:`TaylorSwift.core.process_file` (optionally after
+        :func:`TaylorSwift.corrections.apply_spectral_corrections` /
+        ``run_qc``).
+    path : str or Path
+        Path to the output CSV file.
+    include_qc : bool, optional
+        If True, include quality control information in the output.
+
+    Returns
+    -------
+    pl.DataFrame
+        The resulting DataFrame.
+    """
     df = results_to_dataframe(results, include_qc=include_qc)
     df.write_csv(str(path))
     return df
@@ -369,6 +393,25 @@ def results_to_parquet(
 
     If ``spectra_path`` is given, the long-format spectra table is written
     there as a second Parquet file.
+
+    Parameters
+    ----------
+    results : list[SpectralResult]
+        Output of :func:`TaylorSwift.core.process_file` (optionally after
+        :func:`TaylorSwift.corrections.apply_spectral_corrections` /
+        ``run_qc``).
+    path : str or Path
+        Path to the output Parquet file.
+    include_qc : bool, optional
+        If True, include quality control information in the output.
+    spectra_path : str or Path or None
+        If given, the path to the output Parquet file for the long-format
+        spectra table.
+
+    Returns
+    -------
+    pl.DataFrame
+        The resulting DataFrame.
     """
     df = results_to_dataframe(results, include_qc=include_qc)
     df.write_parquet(str(path))
