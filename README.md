@@ -1,4 +1,5 @@
 # TaylorSwift
+![PyPI Version](https://img.shields.io/pypi/v/TaylorSwift)
 [![DOI](https://zenodo.org/badge/1207345713.svg)](https://doi.org/10.5281/zenodo.22072023)
 [![Python](https://img.shields.io/pypi/pyversions/taylorswift-spectra.svg)](https://pypi.org/project/taylorswift-spectra/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/inkenbrandt/TaylorSwift/blob/main/LICENSE)
