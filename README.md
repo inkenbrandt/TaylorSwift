@@ -1,5 +1,6 @@
 # TaylorSwift
-[![DOI](https://zenodo.org/badge/1207345713.svg)](https://doi.org/10.5281/zenodo.22072023)
+[![DOI](https://zenodo.org/badge/1207345713.svg)](https://doi.org/10.5281/zenodo.22072023)]
+
 
 
 The name is in honor of physicist Sir Geoffrey Ingram Taylor. FFT-based (co)spectral analysis for eddy covariance time series.
