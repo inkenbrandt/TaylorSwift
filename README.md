@@ -1,6 +1,8 @@
 # TaylorSwift
 [![DOI](https://zenodo.org/badge/1207345713.svg)](https://doi.org/10.5281/zenodo.22072023)
-
+[![Python](https://img.shields.io/pypi/pyversions/taylorswift-spectra.svg)](https://pypi.org/project/taylorswift-spectra/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/inkenbrandt/TaylorSwift/blob/main/LICENSE)
+[![codecov](https://codecov.io/github/inkenbrandt/TaylorSwift/graph/badge.svg?token=7DLUOI88QC)](https://codecov.io/github/inkenbrandt/TaylorSwift)
 
 
 <p>The name is in honor of physicist Sir Geoffrey Ingram Taylor. FFT-based (co)spectral analysis for eddy covariance time series.</p>
