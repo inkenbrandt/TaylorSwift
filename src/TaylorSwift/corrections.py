@@ -72,7 +72,23 @@ if TYPE_CHECKING:
 def shadow_correction(
     Ux: np.ndarray, Uy: np.ndarray, Uz: np.ndarray, n_iter: int = 4
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """CSAT3 transducer-shadow correction (Horst, Wilczak & Cook 2015)."""
+    """CSAT3 transducer-shadow correction (Horst, Wilczak & Cook 2015).
+    Parameters
+    ----------
+    Ux : np.ndarray
+        x-component of wind velocity.
+    Uy : np.ndarray
+        y-component of wind velocity.
+    Uz : np.ndarray
+        z-component of wind velocity.
+    n_iter : int
+        Number of iterations for the correction (default 4).
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        Corrected (Ux, Uy, Uz) wind components.
+    """
     h = np.array(
         [
             [0.25, 0.4330127018922193, 0.8660254037844386],
@@ -154,6 +170,11 @@ def webb_pearman_leuning(
         Moist-air specific heat [J kg⁻¹ K⁻¹].
     pD : float
         Dry-air density [kg m⁻³].
+
+    Returns
+    -------
+    float
+        WPL-corrected latent heat flux [W m⁻²].
     """
     pCpTsa = p * Cp * Tsa
     pRatio = 1.0 + 1.6129 * (pVavg / pD)
@@ -560,6 +581,12 @@ def enrich_results_with_means(
         The original high-frequency DataFrame with columns like
         CO2_density, H2O_density, PA, etc.
     site_config : SiteConfig
+
+    Returns
+    -------
+    list[SpectralResult]
+        The same results list, with co2_mean, h2o_mean, and P_mean
+        attributes added to each SpectralResult.
     """
     # Normalise to Polars (no-op if already a pl.DataFrame)
     if not isinstance(df, pl.DataFrame):

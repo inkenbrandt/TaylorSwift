@@ -128,7 +128,10 @@ class TestRollingSigmaFilter:
                     datetime(2023, 1, 1, 0, 0, 0),
                     datetime(2023, 1, 1, 0, 0, 1),
                 ],
-                "Uz": [0.0, 0.0, 20.0],
+                # The spike rides on the *last* timestamp: a trailing window
+                # placed earlier would still contain it and drag the mean far
+                # enough to flag the baseline samples too.
+                "Uz": [20.0, 0.0, 0.0],
             }
         )
         result = rolling_sigma_filter(
@@ -137,4 +140,6 @@ class TestRollingSigmaFilter:
         assert result["TIMESTAMP"].is_sorted()
         assert "Uz_roll_mean" not in result.columns
         assert "Uz_roll_std" not in result.columns
-        assert result["Uz_filtered"].null_count() == 1
+        # Values follow the sort, so only the final spike is nulled.
+        assert result["Uz"].to_list() == [0.0, 0.0, 20.0]
+        assert result["Uz_filtered"].to_list() == [0.0, 0.0, None]
