@@ -4,7 +4,8 @@
 
 
 <p>The name is in honor of physicist Sir Geoffrey Ingram Taylor. FFT-based (co)spectral analysis for eddy covariance time series.</p>
-![Portrait of Sir GI Taylor](https://upload.wikimedia.org/wikipedia/en/f/f2/G_I_Taylor.jpg)
+
+[![Portrait of Sir GI Taylor](https://upload.wikimedia.org/wikipedia/en/f/f2/G_I_Taylor.jpg)]
 
 `TaylorSwift` implements the standard micrometeorological workflow for computing power spectra and cospectra from high-frequency sonic anemometer and open-path gas analyser data, following Kaimal et al. (1972) conventions.
 
