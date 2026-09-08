@@ -43,6 +43,10 @@ dev = [
     "pytest-benchmark>=4.0",
     "ruff>=0.8",
     "mypy>=1.13",
+    "tob2toa>=0.4.0",
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
+    "notebook>=6.0",
 ]
 docs = [
     # Upper bounds are deliberate. MkDocs 2.0 removes the plugin system that
@@ -53,6 +57,13 @@ docs = [
     "mkdocs-material>=9.5,<10",
     "mkdocstrings[python]>=0.24,<3",
     "pymdown-extensions>=10.0",
+    "jupyter>=1.0",
+    "mknotebooks>=0.5",
+    "mkdocs-jupyter>=0.3",
+    "sphinx>=7.3,<8",
+    "ipykernel>=6.0",
+    "notebook>=6.0",
+
 ]
 
 [project.urls]
