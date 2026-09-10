@@ -348,6 +348,9 @@ def combined_transfer_function(
     instrument: SiteConfig,
     averaging_period: float = 30.0,
     flux_type: str = "wT",
+    *,
+    apply_low_freq: bool = True,
+    apply_high_freq: bool = True,
 ) -> np.ndarray:
     """
     Compute the combined spectral transfer function for a given flux.
@@ -369,6 +372,9 @@ def combined_transfer_function(
         Averaging period [minutes].
     flux_type : str
         Which flux: 'wT', 'wu', 'wCO2', 'wH2O'.
+    apply_low_freq, apply_high_freq : bool
+        Independently include block averaging and instrument response.
+        Linear detrending is not included. Both False returns unity.
 
     Returns
     -------
@@ -378,7 +384,10 @@ def combined_transfer_function(
     _validate_flux_type(flux_type)
 
     # 1. Low-frequency: block averaging
-    T_low = tf_block_average(freq, averaging_period)
+    T_low = (tf_block_average(freq, averaging_period)
+             if apply_low_freq else np.ones_like(freq))
+    if not apply_high_freq:
+        return np.clip(T_low, 1e-10, 1.0)
 
     # 2. Sonic line-averaging (affects w always, and u for momentum flux)
     T_sonic_w = tf_sonic_line_averaging(freq, u_mean, instrument.sonic_path_length)

@@ -352,3 +352,152 @@ class TestCorrections:
         )
         assert result.qc_flags["wpl_Fc"] == pytest.approx(expected["Fc_wpl"])
         assert result.qc_flags["wpl_Fe"] == pytest.approx(expected["Fe_wpl"])
+
+@pytest.mark.parametrize("low,high", [(False, False), (True, False), (False, True), (True, True)])
+@pytest.mark.parametrize("method", ["massman", "horst"])
+@pytest.mark.parametrize("wpl,missing", [(False, False), (True, False), (True, True)])
+def test_correction_contract(spectral_result_stub, low, high, method, wpl, missing):
+    from copy import deepcopy
+
+    from TaylorSwift.corrections import compute_spectral_correction_factor
+    from TaylorSwift.transfer_functions import _sensor_tau_for_flux, _trapezoid
+
+    res = spectral_result_stub
+    site = SiteConfig(z_measurement=3.0, z_canopy=0.0)
+    instrument = InstrumentConfig()
+    res.freq = np.logspace(-5, 1, 200)
+    for flux, scale in zip(("wT", "wu", "wCO2", "wH2O"), (1, -2, -3, 4), strict=True):
+        setattr(res, f"cosp_{flux}", scale * res.freq / (1 + res.freq)**2)
+        setattr(res, f"ogive_{flux}", np.arange(len(res.freq), dtype=float))
+    res.T_mean = 20.0
+    res.co2_mean = np.nan if missing else 400.0
+    res.h2o_mean = 10.0
+    raw = deepcopy(res)
+    kwargs = dict(apply_low_freq=low, apply_high_freq=high, apply_wpl=wpl, method=method)
+    apply_spectral_corrections([res], site, instrument, **kwargs)
+    for flux in ("wT", "wu", "wCO2", "wH2O"):
+        cosp = getattr(raw, f"cosp_{flux}")
+        transfer = combined_transfer_function(res.freq, res.u_mean, instrument,
+                                             apply_low_freq=low, apply_high_freq=high,
+                                             flux_type=flux)
+        expected = cosp / transfer
+        actual = res.corrected_spectra[f"cosp_{flux}"]
+        np.testing.assert_allclose(actual, expected)
+        integral = _trapezoid(actual, np.log(res.freq))
+        assert res.qc_flags[f"cov_{flux}_deconvolved"] == pytest.approx(integral)
+        assert res.corrected_spectra[f"ogive_{flux}"][0] == pytest.approx(integral)
+        assert res.corrected_spectra[f"ogive_{flux}"][-1] == 0
+        assert _trapezoid(res.corrected_spectra[f"ncosp_{flux}"], np.log(res.freq)) == pytest.approx(1)
+        if method == "massman":
+            cf = compute_spectral_correction_factor(res.u_mean, site.z_eff, instrument,
+                                                   flux_type=flux, apply_low_freq=low,
+                                                   apply_high_freq=high)
+        else:
+            tau = np.hypot(_sensor_tau_for_flux(flux, instrument),
+                           instrument.irga_path_length / (2 * np.pi * res.u_mean))
+            cf = horst_analytical_correction(res.u_mean, site.z_eff, tau, flux) if high else 1
+            if low:
+                cf *= compute_spectral_correction_factor(res.u_mean, site.z_eff, instrument,
+                                                         flux_type=flux, apply_high_freq=False)
+        assert res.qc_flags[f"cf_{flux}"] == pytest.approx(cf)
+        assert res.qc_flags[f"cov_{flux}_corrected"] == pytest.approx(getattr(raw, f"cov_{flux}") * cf)
+        for prefix in ("cosp_", "ncosp_", "ogive_", "cov_"):
+            np.testing.assert_equal(getattr(res, prefix + flux), getattr(raw, prefix + flux))
+        if not low and not high:
+            assert cf == 1
+            np.testing.assert_array_equal(actual, cosp)
+    assert res.H == raw.H
+    for suffix in ("corrected", "deconvolved"):
+        assert res.qc_flags[f"H_{suffix}"] == pytest.approx(1200 * res.qc_flags[f"cov_wT_{suffix}"])
+    assert res.qc_flags["wpl_status"] == ("disabled" if not wpl else "missing_prerequisites" if missing else "applied")
+    if wpl and not missing:
+        assert res.qc_flags["wpl_pressure_source"] == "standard_atmosphere_fallback"
+        expected_wpl = wpl_correction(res.qc_flags["cov_wCO2_corrected"],
+                                      res.qc_flags["cov_wH2O_corrected"],
+                                      res.qc_flags["H_corrected"], 20, 101.3, 400, 10)
+        assert res.qc_flags["wpl_Fc"] == pytest.approx(expected_wpl["Fc_wpl"])
+        assert res.qc_flags["wpl_Fe"] == pytest.approx(expected_wpl["Fe_wpl"])
+    once = deepcopy(res)
+    apply_spectral_corrections([res], site, instrument, **kwargs)
+    for key, value in once.corrected_spectra.items():
+        np.testing.assert_equal(res.corrected_spectra[key], value)
+    for key, value in once.qc_flags.items():
+        np.testing.assert_equal(res.qc_flags[key], value)
+    # Changed choices must also start from raw data and remove stale WPL output.
+    apply_spectral_corrections([res], site, instrument, False, False, False)
+    assert "wpl_Fc" not in res.qc_flags
+    np.testing.assert_array_equal(res.corrected_spectra["cosp_wT"], raw.cosp_wT)
+    assert res.qc_flags["cf_wT"] == 1
+
+
+def test_method_validation_without_processable_results(spectral_result_stub):
+    for results in ([], [spectral_result_stub]):
+        spectral_result_stub.u_mean = np.nan
+        with pytest.raises(ValueError, match="Unknown method"):
+            apply_spectral_corrections(results, SiteConfig(), InstrumentConfig(), method="typo")
+
+
+@pytest.mark.parametrize("pressure,source", [(90, "measured"), (np.nan, "standard_atmosphere_fallback")])
+def test_wpl_status_and_stale_outputs(spectral_result_stub, pressure, source):
+    res = spectral_result_stub
+    res.T_mean, res.co2_mean, res.h2o_mean, res.P_mean = 20, 400, 10, pressure
+    apply_spectral_corrections([res], SiteConfig(), InstrumentConfig())
+    assert res.qc_flags["wpl_pressure_source"] == source
+    res.h2o_mean = np.nan
+    apply_spectral_corrections([res], SiteConfig(), InstrumentConfig())
+    assert res.qc_flags["wpl_status"] == "missing_prerequisites"
+    assert "h2o_mean" in res.qc_flags["wpl_missing_prerequisites"]
+    assert "wpl_Fc" not in res.qc_flags
+    res.u_mean = np.nan
+    apply_spectral_corrections([res], SiteConfig(), InstrumentConfig())
+    assert res.qc_flags["spectral_status"] == "skipped_invalid_wind"
+    assert np.isnan(res.qc_flags["H_corrected"])
+    assert res.corrected_spectra == {}
+
+
+def test_closed_path_wpl_status(spectral_result_stub):
+    instrument = InstrumentConfig(irga_type="enclosed_path")
+    apply_spectral_corrections([spectral_result_stub], SiteConfig(), instrument)
+    assert spectral_result_stub.qc_flags["wpl_status"] == "not_applicable"
+
+
+def test_independent_transfer_switches():
+    from TaylorSwift.corrections import compute_spectral_correction_factor
+
+    freq = np.array([1e-5, 0.01, 5.0])
+    inst = InstrumentConfig()
+    low = combined_transfer_function(freq, 5, inst, apply_high_freq=False)
+    np.testing.assert_allclose(low, np.clip(tf_block_average(freq, 30), 1e-10, 1))
+    high = combined_transfer_function(freq, 5, inst, apply_low_freq=False)
+    expected_high = tf_sonic_line_averaging(freq, 5, inst.sonic_path_length) * tf_first_order_response(freq, inst.tau_T)
+    np.testing.assert_allclose(high, np.clip(expected_high, 1e-10, 1))
+    np.testing.assert_array_equal(combined_transfer_function(freq, 5, inst,
+                                  apply_low_freq=False, apply_high_freq=False), np.ones(3))
+    assert low[0] < high[0]
+    assert high[-1] < low[-1]
+    assert compute_spectral_correction_factor(np.nan, 3, inst,
+                                             apply_low_freq=False, apply_high_freq=False) == 1
+
+
+@pytest.mark.parametrize("field,value,status", [
+    ("T_mean", np.nan, "missing_prerequisites"),
+    ("h2o_mean", np.nan, "missing_prerequisites"),
+    ("T_mean", -274, "invalid_prerequisites"),
+    ("P_mean", -1, "invalid_prerequisites"),
+])
+def test_wpl_invalid_inputs(spectral_result_stub, field, value, status):
+    res = spectral_result_stub
+    res.T_mean, res.co2_mean, res.h2o_mean, res.P_mean = 20, 400, 10, 90
+    setattr(res, field, value)
+    apply_spectral_corrections([res], SiteConfig(), InstrumentConfig())
+    assert res.qc_flags["wpl_status"] == status
+    assert "wpl_Fc" not in res.qc_flags
+
+
+def test_zero_spectrum_normalization(spectral_result_stub):
+    res = spectral_result_stub
+    res.cosp_wT = np.zeros_like(res.freq)
+    apply_spectral_corrections([res], SiteConfig(), InstrumentConfig(), apply_wpl=False)
+    assert res.qc_flags["cov_wT_deconvolved"] == 0
+    assert np.all(np.isnan(res.corrected_spectra["ncosp_wT"]))
+    np.testing.assert_array_equal(res.corrected_spectra["ogive_wT"], np.zeros_like(res.freq))

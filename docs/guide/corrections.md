@@ -35,7 +35,7 @@ results = tswift.apply_spectral_corrections(
 | Argument | Default | Effect |
 | --- | --- | --- |
 | `apply_high_freq` | `True` | Sensor response, path averaging, sensor separation |
-| `apply_low_freq` | `True` | Block averaging and linear detrending |
+| `apply_low_freq` | `True` | Block averaging only |
 | `apply_wpl` | `True` | Webb-Pearman-Leuning density correction |
 | `method` | `"massman"` | `"massman"` (numerical) or the Horst closed form |
 | `verbose` | `False` | Report per-interval correction factors |
@@ -70,7 +70,7 @@ exactly why the defaults in [`SiteConfig`](configuration.md) matter.
 | `tf_block_average` | Finite averaging period removes the lowest frequencies |
 | `tf_linear_detrend` | Detrending removes more of them |
 
-Both depend only on `averaging_period`. A 30-minute window loses more
+`tf_linear_detrend` is a standalone helper and is **not** part of the combined response. Whether it should replace or accompany block averaging has not been validated here; no detrending response has been added. The combined low-frequency response depends only on `averaging_period`. A 30-minute window loses more
 low-frequency flux than a 60-minute one; the ogive tells you whether that
 matters at your site (see [Spectra and cospectra](spectra.md)).
 
@@ -89,7 +89,7 @@ matters at your site (see [Spectra and cospectra](spectra.md)).
 
     `horst_analytical_correction` is a closed-form approximation for
     first-order-response scalar sensors (Horst 1997). Cheaper, and useful as a
-    sanity check on the numerical result.
+    sanity check on the numerical result. When low-frequency correction is enabled, the analytical high-frequency factor is multiplied by the numerical block-only factor. This is a separable approximation, not the joint Massman integral.
 
 ## Inspecting the transfer functions
 
@@ -192,3 +192,60 @@ print([c for c in table.columns if "cf" in c.lower() or "corr" in c.lower()])
 A correction factor much above ~1.3 is worth investigating — it usually points
 at sensor separation or an over-long time constant rather than at genuine
 atmospheric conditions.
+
+### Raw fields and the two corrected estimates
+
+Corrections rebuild their outputs from raw data on every call. The original
+`cosp_*`, `ncosp_*`, `ogive_*`, `cov_*`, `H`, and stability fields remain raw.
+Existing spectrum exports and plots therefore continue to show raw data.
+Changing correction options or disabling WPL removes previous correction outputs.
+Method names are validated even when the results list is empty.
+
+| Output | Meaning |
+| --- | --- |
+| `qc_flags['cf_wT']` (and other fluxes) | Model-based multiplicative factor |
+| `qc_flags['cov_wT_corrected']` | Raw full-record covariance times model factor |
+| `qc_flags['H_corrected']` | Model-corrected temperature covariance times 1200 |
+| `result.corrected_spectra['cosp_wT']` | Raw binned area-preserving cospectrum divided by selected transfer response |
+| `qc_flags['cov_wT_deconvolved']` | Trapezoidal integral of that array over log frequency |
+| `result.corrected_spectra['ogive_wT']` | Reverse cumulative integral, zero at highest bin centre |
+| `result.corrected_spectra['ncosp_wT']` | Deconvolved array divided by its own integral |
+| `qc_flags['H_deconvolved']` | Deconvolved temperature covariance times 1200 |
+
+The same array keys and covariance conventions apply to `wu`, `wCO2`, and
+`wH2O`. A zero or unavailable normalization denominator produces NaNs. Empty
+arrays produce no corrected array entries and a NaN deconvolved covariance;
+a single bin has no integrable bandwidth and also yields a NaN covariance.
+
+Both switches independently control factors **and** array responses. With both
+off, factors are exactly one and corrected cospectra are copies of raw arrays.
+With only low frequencies enabled, only block averaging is included. With only
+high frequencies enabled, block averaging is excluded. Horst approximates the
+high-frequency factor with the existing effective sensor/path time constant;
+it does not model all instrument geometry as fully as Massman does.
+Frequency-wise array deconvolution is identical for the two method choices.
+
+The scalar model estimate and the integral of a deconvolved measured spectrum
+are different estimators. The latter covers only the available bin centres,
+uses binned quadrature and can amplify noise. It need not equal the model-scaled
+full-record covariance, even when all correction switches are off. Transfer
+responses retain the existing clipping to `[1e-10, 1]`; deconvolution near the
+floor can be very large. Raw ogives were computed before binning and are not
+expected to match the new binned quadrature exactly.
+
+WPL uses the **model-corrected** scalar covariances and `H_corrected`, and writes
+only `wpl_Fc`, `wpl_Fe` and their additive corrections in `qc_flags`. It does not
+alter cospectra or their normalization. Both heat estimates retain the spectral
+stack's fixed volumetric heat capacity of 1200 J m⁻³ K⁻¹.
+
+`qc_flags` records `spectral_method`, `spectral_low_freq`, `spectral_high_freq`,
+`spectral_low_response`, and `spectral_status` (`applied`, `disabled`, or
+`skipped_invalid_wind`). Enabled spectral corrections require finite wind
+speed of at least 0.5 m/s; skipped factors and model estimates are NaN.
+
+`wpl_status` is `applied`, `disabled`, `not_applicable`, `missing_prerequisites`,
+or `invalid_prerequisites`. `wpl_missing_prerequisites` lists missing means or
+model-corrected inputs. `wpl_pressure_source` is `measured`,
+`standard_atmosphere_fallback`, or `not_used`; `wpl_pressure_kpa` records the
+pressure actually selected. Missing pressure uses 101.3 kPa, while physically
+invalid pressure, temperature or density inputs skip WPL visibly.

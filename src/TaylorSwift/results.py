@@ -194,6 +194,10 @@ class SpectralResult:
     # Quality flags (filled by qc module)
     qc_flags: dict[str, Any] = field(default_factory=dict)
 
+    # Frequency-wise deconvolution products; original fields remain raw.
+    # Keys: cosp_<flux>, ncosp_<flux>, ogive_<flux>.
+    corrected_spectra: dict[str, np.ndarray] = field(default_factory=dict)
+
 
 # ---------------------------------------------------------------------------
 # Tabular export
