@@ -47,7 +47,10 @@ if TYPE_CHECKING:
 try:
     from numpy import trapezoid as _trapezoid  # noqa: F401
 except ImportError:  # NumPy < 2.0
-    from numpy import trapz as _trapezoid  # type: ignore[no-redef]  # noqa: F401
+    import numpy as _np_legacy
+
+    # Current NumPy stubs no longer expose this legacy runtime-only name.
+    _trapezoid = getattr(_np_legacy, "trapz")  # noqa: B009
 
 __all__ = [
     "tf_block_average",

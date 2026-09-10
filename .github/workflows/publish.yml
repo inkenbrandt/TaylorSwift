@@ -20,8 +20,22 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify release tag matches project version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python tools/check_release_version.py
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.14"
+
+      - name: Verify lock metadata
+        run: uv lock --check
+
       - name: Build sdist and wheel
         run: pipx run build
+
+      - name: Check installed wheel and consumer typing
+        run: python tools/check_wheel.py
 
       # Fails the release before upload if the rendered README or metadata
       # would be rejected by PyPI.

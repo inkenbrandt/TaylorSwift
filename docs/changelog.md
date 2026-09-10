@@ -9,10 +9,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Windows CI with strict cp1252 I/O checks, isolated installed-wheel smoke
+  tests, consumer typing checks, and release tag/version validation.
+
 - Full documentation site: installation, quickstart, a per-stage user guide,
   and a per-module API reference.
 
 ### Fixed
+
+- README plotting tuple unpacking and distribution version badge.
+- Portable ASCII arrows in compilation summaries and gap reports.
+- Regenerated the distribution lockfile and made CI reject stale metadata.
+- Static public export stubs preserve lazy imports; plotting annotations now
+  describe the returned NumPy axes arrays.
 
 - `mkdocstrings` now parses the codebase's NumPy-style docstrings. Parameter,
   return, and attribute sections previously rendered as unstyled prose.
@@ -24,6 +33,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `tf_sonic_line_averaging`.
 
 ### Changed
+
+- Consolidated duplicate test/coverage workflows and explicitly generate
+  JUnit and coverage XML artifacts.
+- Removed unused docs/dev dependencies and moved interactive notebook tools
+  into a `notebooks` extra. Runtime dependencies remain required.
 
 - Google-style docstring sections in `config`, `results`, and `data_quality`
   converted to NumPy style to match the rest of the codebase.

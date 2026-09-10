@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy import fft as _fft
 
 
@@ -55,7 +56,7 @@ class _PreparedSeries:
         self.L = L
         self._spec = None
         self._mask_spec = None
-        self._prefix = None
+        self._prefix: NDArray[np.float64] | None = None
 
     @property
     def spec(self):
@@ -75,7 +76,8 @@ class _PreparedSeries:
     def prefix(self):
         """Prefix sums of the centred series: sum(centered[a:b]) in O(1)."""
         if self._prefix is None:
-            self._prefix = np.concatenate(([0.0], np.cumsum(self.centered)))
+            assert self.centered is not None
+            self._prefix = np.concatenate((np.array([0.0]), np.cumsum(self.centered)))
         return self._prefix
 
 

@@ -9,7 +9,7 @@ physics and statistics delegate to :mod:`TaylorSwift.thermo` and
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -46,13 +46,13 @@ class CalcFlux:
     def convert_KtoC(self, T):
         """Convert Kelvin to Celsius."""
         if np.isscalar(T):
-            return float(thermo.convert_KtoC(float(T)))
+            return float(thermo.convert_KtoC(float(cast(Any, T))))
         return thermo.convert_KtoC(np.asarray(T, dtype=float))
 
     def convert_CtoK(self, T):
         """Convert Celsius to Kelvin."""
         if np.isscalar(T):
-            return float(thermo.convert_CtoK(float(T)))
+            return float(thermo.convert_CtoK(float(cast(Any, T))))
         return thermo.convert_CtoK(np.asarray(T, dtype=float))
 
     # ------------------------------------------------------------------

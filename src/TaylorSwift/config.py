@@ -70,6 +70,8 @@ class FluxConfig:
     parameters: dict[str, list[str]] = field(
         default_factory=lambda: {k: list(v) for k, v in _DEFAULT_PARAMETERS.items()}
     )
+    # Set by the pipeline; preserve the existing constructor signature.
+    apply_kh20_oxygen: bool = field(default=False, init=False, repr=False, compare=False)
 
 
 # ---------------------------------------------------------------------------

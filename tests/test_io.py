@@ -5,6 +5,7 @@ Uses synthetic in-memory TOA5 files written to a temporary directory so no
 real instrument data is required.
 """
 
+import io
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -52,6 +53,26 @@ def _write_toa5(path: Path, start: datetime, n: int, fs: float = 20.0):
     content = _toa5_header() + _toa5_rows(start, n, fs)
     path.write_text(content)
     return path
+
+
+def test_default_verbose_output_cp1252(tmp_path, monkeypatch):
+    """Both the summary and gap lines must work on a strict legacy console."""
+    first = _write_toa5(tmp_path / "TOA5_first.dat", datetime(2023, 6, 10), 20)
+    second = _write_toa5(
+        tmp_path / "TOA5_second.dat", datetime(2023, 6, 10, 0, 1), 20
+    )
+    buffer = io.BytesIO()
+    with io.TextIOWrapper(buffer, encoding="cp1252", errors="strict") as console:
+        with monkeypatch.context() as patch:
+            patch.setattr("sys.stdout", console)
+            frame, metadata = compile_toa5([first, second])
+        console.flush()
+        output = buffer.getvalue().decode("cp1252")
+    assert frame.height == 40
+    assert metadata["n_gaps"] == 1
+    assert "Time range:" in output
+    assert "Data gaps detected: 1" in output
+    assert output.count(" -> ") == 2
 
 
 # ---------------------------------------------------------------------------

@@ -118,7 +118,7 @@ def read_toa5(
         _agg_line = fh.readline()   # aggregation row — not stored
 
     meta_parts = [s.strip().strip('"') for s in meta_line.split(',')]
-    metadata = {
+    metadata: dict[str, str | dict[str, str]] = {
         'file_type':    meta_parts[0] if len(meta_parts) > 0 else '',
         'station_id':   meta_parts[1] if len(meta_parts) > 1 else '',
         'logger_model': meta_parts[2] if len(meta_parts) > 2 else '',
@@ -475,12 +475,12 @@ def compile_toa5(
 
     if verbose:
         print(f"  Compiled: {len(df):,} records")
-        print(f"  Time range: {compile_meta['time_start']} → "
+        print(f"  Time range: {compile_meta['time_start']} -> "
               f"{compile_meta['time_end']}")
         print(f"  Duplicates removed: {n_dupes:,}")
         print(f"  Data gaps detected: {len(gaps)}")
         for g in gaps[:10]:
-            print(f"    {g['start']} → {g['end']} ({g['duration_str']})")
+            print(f"    {g['start']} -> {g['end']} ({g['duration_str']})")
         if len(gaps) > 10:
             print(f"    ... and {len(gaps) - 10} more")
 

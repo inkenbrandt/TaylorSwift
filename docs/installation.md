@@ -51,6 +51,15 @@ pip install taylorswift-spectra
 
     Adds `mkdocs`, `mkdocs-material`, and `mkdocstrings[python]`.
 
+=== "Interactive notebooks"
+
+    ```bash
+    pip install "taylorswift-spectra[notebooks]"
+    ```
+
+    Adds Notebook and ipykernel for the examples. These tools are no longer
+    included in the development or documentation extras.
+
 ## Development checkout
 
 ```bash

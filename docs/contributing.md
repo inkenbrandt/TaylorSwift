@@ -8,6 +8,11 @@ cd TaylorSwift
 pip install -e ".[dev,docs]"
 ```
 
+For a reproducible environment, use `uv sync --locked --extra dev --extra docs`.
+After intentionally editing dependencies or project metadata, run `uv lock`
+and commit `uv.lock`. CI uses `uv lock --check` and `uv sync --locked`; it
+fails on stale metadata without rewriting the lockfile.
+
 ## Tests
 
 ```bash
@@ -16,7 +21,10 @@ pytest --cov=TaylorSwift --cov-report=term-missing
 pytest benchmarks --benchmark-only              # performance suite
 ```
 
-CI runs the suite on Python 3.10 through 3.14. Benchmarks run on every push but
+CI runs the suite on Linux with Python 3.10 through 3.14 and Windows with
+Python 3.12. Windows also runs uncaptured I/O tests with strict cp1252 output.
+JUnit XML and coverage XML are generated explicitly and retained as artifacts.
+Benchmarks run on every push but
 report rather than gate — shared-runner timings are too noisy to fail on.
 Compare locally with `--benchmark-compare`.
 
@@ -31,6 +39,38 @@ mypy
 `mypy` is configured to analyse under Python 3.12 even though the package
 supports 3.10+, because NumPy 2.x ships stubs using `type` statements that
 older mypy targets reject.
+
+CI also builds and installs the wheel into a fresh environment outside the
+checkout, checks lazy imports, distribution metadata and plotting, and runs
+a strict mypy consumer example. The example checks inferred types and proves
+that invalid plot inputs, tuple `savefig` calls and unknown exports are rejected.
+To run it locally after `uv build`, use `python tools/check_wheel.py`.
+Top-level static exports live in `src/TaylorSwift/__init__.pyi`; keep them in
+sync with `_EXPORTS`. The `py.typed` marker enables inline typing, but does not
+promise that every legacy function has a complete annotation.
+
+## Dependency audit and compatibility
+
+The `dev` extra retains the tools used by tests, benchmarks, lint and typing.
+The `docs` extra retains only MkDocs, Material, mkdocstrings and
+pymdown-extensions, all used in `mkdocs.yml`. Neither the MkDocs configuration
+nor Read the Docs uses Sphinx, mknotebooks or mkdocs-jupyter, so those packages
+have been removed. `tob2toa` has no imports in the package, tests or examples
+and has also been removed from `dev`.
+
+The example notebooks are interactive authoring assets, not part of the docs
+build. Install `.[notebooks]` for Notebook and ipykernel; users who previously
+obtained these through `dev` or `docs` should add this extra explicitly. The
+Jupyter umbrella package is unnecessary for these examples.
+
+Plotting and legacy pipeline dependencies remain required runtime dependencies.
+A future split into `plotting` or `legacy` extras needs a dependency/import map
+(including pandas/Arrow conversion and statsmodels-backed despiking), guarded
+imports with actionable installation errors, and tests for base-only, each
+extra, and full installs. Preserve existing import names and default-install
+behavior during a documented deprecation period; change the default dependency
+set only in an announced breaking release with migration instructions. Lazy
+top-level imports alone do not make these dependencies optional.
 
 ## Documentation
 

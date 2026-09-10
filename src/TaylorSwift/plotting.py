@@ -17,11 +17,17 @@ Kaimal, J.C. et al. (1972). Spectral characteristics of surface-layer
 Moraes, O.L.L. et al. (2008). Physica A, 387, 4927–4939.
 """
 
+from collections.abc import Sequence
+from os import PathLike
+
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.figure import Figure
 from matplotlib.ticker import LogLocator
+from numpy.typing import NDArray
 
+from .results import SpectralResult
 from .transfer_functions import _trapezoid, kaimal_cospec_model
 
 
@@ -57,13 +63,13 @@ def _add_slope_line(ax, slope, f_range=(0.5, 5.0), label=None, anchor_y=None, **
 # Main cospectral plot
 # ---------------------------------------------------------------------------
 def plot_cospectra(
-    results,
-    stability_range=(-2.0, 2.0),
+    results: Sequence[SpectralResult],
+    stability_range: tuple[float, float] = (-2.0, 2.0),
     show_model: bool = True,
     show_slope: bool = True,
-    figsize=(14, 10),
-    save_path=None,
-)-> tuple[plt.Figure, list[plt.Axes]]:
+    figsize: tuple[float, float] = (14, 10),
+    save_path: str | PathLike[str] | None = None,
+)-> tuple[Figure, NDArray[np.object_]]:
     """
     Plot normalised cospectra (w'T', w'u', w'CO₂', w'H₂O') in a 2×2 grid.
 
@@ -186,12 +192,12 @@ def plot_cospectra(
 # Power spectra plot
 # ---------------------------------------------------------------------------
 def plot_spectra(
-    results,
-    stability_range=(-2.0, 2.0),
+    results: Sequence[SpectralResult],
+    stability_range: tuple[float, float] = (-2.0, 2.0),
     show_model: bool = True,
-    figsize=(14, 10),
-    save_path=None,
-) -> tuple[plt.Figure, list[plt.Axes]]:
+    figsize: tuple[float, float] = (14, 10),
+    save_path: str | PathLike[str] | None = None,
+) -> tuple[Figure, NDArray[np.object_]]:
     """
     Plot normalised power spectra (u, v, w, T) in a 2×2 grid.
 
@@ -280,11 +286,11 @@ def plot_spectra(
 # Ogive plot
 # ---------------------------------------------------------------------------
 def plot_ogive(
-    results,
-    stability_range=(-2.0, 2.0),
-    figsize=(14, 5),
-    save_path=None,
-) -> tuple[plt.Figure, list[plt.Axes]]:
+    results: Sequence[SpectralResult],
+    stability_range: tuple[float, float] = (-2.0, 2.0),
+    figsize: tuple[float, float] = (14, 5),
+    save_path: str | PathLike[str] | None = None,
+) -> tuple[Figure, NDArray[np.object_]]:
     """
     Plot ogives (cumulative cospectra from high to low frequency).
 
@@ -362,7 +368,11 @@ def plot_ogive(
 # ---------------------------------------------------------------------------
 # Summary time-series plot
 # ---------------------------------------------------------------------------
-def plot_summary_timeseries(results, figsize=(14, 10), save_path=None)-> tuple[plt.Figure, list[plt.Axes]]:
+def plot_summary_timeseries(
+    results: Sequence[SpectralResult],
+    figsize: tuple[float, float] = (14, 10),
+    save_path: str | PathLike[str] | None = None,
+)-> tuple[Figure, NDArray[np.object_]] | tuple[None, None]:
     """
     Plot key turbulence parameters vs time for QC overview.
 
