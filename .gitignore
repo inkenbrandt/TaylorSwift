@@ -21,4 +21,7 @@ examples/data/TOA5_23861_Time_Series_855_2023_06_10_0000.dat
 /.mypy_cache
 /.pytest_cache
 /.ruff_cache
+/data/*
 /src/TaylorSwift/__pycache__
+/IMPROVEMENTS.md
+/CONTEXT.md

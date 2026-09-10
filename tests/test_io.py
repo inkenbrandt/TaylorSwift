@@ -41,7 +41,7 @@ def _toa5_rows(start: datetime, n: int, fs: float = 20.0):
         c  = rng.normal(700.0, 5.0)
         q  = rng.normal(10.0, 0.5)
         lines.append(
-            f'"{ts.strftime("%Y-%m-%d %H:%M:%S")}",{i},{u:.4f},{v:.4f},'
+            f'"{ts.strftime("%Y-%m-%d %H:%M:%S.%f")}",{i},{u:.4f},{v:.4f},'
             f'{w:.4f},{T:.4f},{c:.4f},{q:.4f}'
         )
         ts += timedelta(microseconds=dt_us)
@@ -223,3 +223,100 @@ class TestCompileToa5:
         _, meta = compile_toa5(multi_file_dir)
         assert 'n_files' in meta
         assert meta['n_files'] == 2
+
+
+def test_20hz_read_compile_and_scan(tmp_path):
+    start = datetime(2023, 6, 10)
+    fp = _write_toa5(tmp_path / 'TOA5_fast.dat', start, 20)
+    read, _ = read_toa5(fp)
+    compiled, meta = compile_toa5(tmp_path, verbose=False)
+    for df in (read, compiled):
+        assert df['TIMESTAMP'].dtype == pl.Datetime('us')
+        assert len(df) == df['TIMESTAMP'].n_unique() == 20
+        assert df['TIMESTAMP'].diff().dt.total_microseconds().drop_nulls().to_list() == [50000] * 19
+    assert meta['n_duplicates_removed'] == 0
+    info = scan_toa5_directory(tmp_path)[0]
+    assert info['first_timestamp'] == start
+    assert info['last_timestamp'] == start + timedelta(milliseconds=950)
+
+
+def test_mixed_precision_matches_scalar(tmp_path):
+    from TaylorSwift.io import _parse_toa5_timestamp
+
+    timestamps = ['2023-06-10 00:00:00' + suffix
+                  for suffix in ('', '.1', '.05', '.123', '.1234', '.12345', '.123456')]
+    rows = [f'"{ts}",{i},5,0,0,20,700,10' for i, ts in enumerate(timestamps)]
+    fp = tmp_path / 'mixed.dat'
+    fp.write_text(_toa5_header() + '\n'.join(rows) + '\n')
+    df, _ = read_toa5(fp)
+    assert df['TIMESTAMP'].to_list() == [_parse_toa5_timestamp(ts) for ts in timestamps]
+
+
+@pytest.mark.parametrize('timestamp', ['2023-06-10 00:00:00.1234567',
+                                       '2023-02-30 00:00:00', '', 'invalid'])
+def test_invalid_timestamp_rejected(tmp_path, timestamp):
+    from TaylorSwift.io import _parse_toa5_timestamp
+
+    fp = tmp_path / 'invalid.dat'
+    fp.write_text(_toa5_header() + f'"{timestamp}",0,5,0,0,20,700,10\n')
+    with pytest.raises(ValueError):
+        _parse_toa5_timestamp(timestamp)
+    with pytest.raises(ValueError, match='timestamp'):
+        read_toa5(fp)
+    with pytest.raises(ValueError, match='timestamp'):
+        compile_toa5([fp], verbose=False)
+
+
+def test_overlap_removes_only_exact_samples(tmp_path):
+    rows = _toa5_rows(datetime(2023, 6, 10), 30).splitlines()
+    paths = [tmp_path / name for name in ('a.dat', 'b.dat')]
+    for path, subset in zip(paths, (rows[:20], rows[10:]), strict=True):
+        path.write_text(_toa5_header() + '\n'.join(subset) + '\n')
+    df, meta = compile_toa5(paths, verbose=False)
+    assert len(df) == df['TIMESTAMP'].n_unique() == 30
+    assert meta['n_duplicates_removed'] == meta['n_exact_duplicates_removed'] == 10
+    assert meta['n_conflicting_records'] == 0
+
+
+@pytest.mark.parametrize('policy,expected', [('first', 5.0), ('last', 9.0)])
+def test_conflict_policy_is_explicit_and_deterministic(tmp_path, policy, expected):
+    fp = tmp_path / 'conflict.dat'
+    fp.write_text(_toa5_header() +
+                  '"2023-06-10 00:00:00.05",1,5,0,0,20,700,10\n' +
+                  '"2023-06-10 00:00:00.050000",1,9,0,0,20,700,10\n')
+    with pytest.raises(ValueError, match='conflicting'):
+        compile_toa5([fp], verbose=False)
+    df, meta = compile_toa5([fp], conflict_policy=policy, verbose=False)
+    assert df['Ux'].to_list() == [expected]
+    assert meta['n_conflicting_records'] == meta['n_duplicates_removed'] == 1
+    assert meta['n_exact_duplicates_removed'] == 0
+
+
+def test_mixed_stations_rejected(tmp_path):
+    paths = [tmp_path / name for name in ('a.dat', 'b.dat')]
+    for i, path in enumerate(paths):
+        path.write_text(_toa5_header(station_id=f'Site{i}') +
+                        _toa5_rows(datetime(2023, 6, 10), 20))
+    with pytest.raises(ValueError, match='one station'):
+        compile_toa5(paths, verbose=False)
+
+
+def test_compiled_complete_interval_processes_at_20hz(tmp_path):
+    import warnings
+
+    from TaylorSwift.config import SiteConfig
+    from TaylorSwift.core import process_file
+
+    start = datetime(2023, 6, 10)
+    fp = _write_toa5(tmp_path / 'minute.dat', start, 1200)
+    df, _ = compile_toa5([fp], verbose=False)
+    config = SiteConfig(z_measurement=3.0, z_canopy=0.3,
+                        sampling_freq=20.0, averaging_period=1.0)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        results = process_file(df, config)
+    assert len(df) == 1200
+    assert len(results) == 1
+    assert results[0].timestamp_start == start
+    assert results[0].timestamp_end == start + timedelta(minutes=1)
+    assert not any('sampled at' in str(w.message) for w in caught)

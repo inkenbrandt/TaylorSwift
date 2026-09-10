@@ -30,11 +30,14 @@ import polars as pl
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+_TIMESTAMP_PATTERN = r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$'
+
+
 def _parse_toa5_timestamp(ts_str: str) -> datetime:
     """Parse a TOA5 timestamp string to a Python :class:`datetime`.
 
-    Strips surrounding quotes and any sub-second fraction that
-    :func:`datetime.strptime` cannot handle directly.
+    Accepts timezone-naive whole seconds or 1–6 fractional digits.
+    Microseconds are preserved; unsupported precision raises ValueError.
 
     Parameters
     ----------
@@ -47,8 +50,10 @@ def _parse_toa5_timestamp(ts_str: str) -> datetime:
     datetime
     """
     ts_str = ts_str.strip().strip('"')
-    ts_str = re.sub(r'\.\d+$', '', ts_str)   # drop sub-second fraction
-    return datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S')
+    if not re.fullmatch(_TIMESTAMP_PATTERN, ts_str):
+        raise ValueError(f'Invalid TOA5 timestamp or unsupported precision: {ts_str!r}')
+    fmt = '%Y-%m-%d %H:%M:%S.%f' if '.' in ts_str else '%Y-%m-%d %H:%M:%S'
+    return datetime.strptime(ts_str, fmt)
 
 
 def _format_duration(seconds: float) -> str:
@@ -85,7 +90,9 @@ def read_toa5(
     filepath : str or Path
         Path to the ``.dat`` / ``.csv`` file.
     parse_dates : bool
-        Convert the TIMESTAMP column to ``pl.Datetime`` (default ``True``).
+        Convert TIMESTAMP to timezone-naive ``pl.Datetime('us')`` (default
+        ``True``). Whole seconds and 1–6 fractional digits are supported.
+        Invalid, missing, or higher-precision timestamps raise ValueError.
     drop_diagnostics : bool
         If ``True``, set wind / scalar values to ``null`` when the
         corresponding diagnostic flag is non-zero (``diag_sonic``,
@@ -143,23 +150,21 @@ def read_toa5(
     # --- TIMESTAMP: strip quotes, optionally parse to Datetime -------------
     if 'TIMESTAMP' in df.columns:
         df = df.with_columns(
-            pl.col('TIMESTAMP').str.strip_chars('"').alias('TIMESTAMP')
+            pl.col('TIMESTAMP').str.strip_chars().str.strip_chars('"').alias('TIMESTAMP')
         )
         if parse_dates:
-            # High-frequency (20 Hz) TOA5 files often carry sub-second
-            # timestamps such as "2023-08-29 00:00:00.05".  Polars'
-            # format=None inference can silently produce all-null when it
-            # cannot uniquely determine the format from the sample rows, so
-            # we strip the fractional-second part first (matching the
-            # behaviour of _parse_toa5_timestamp) and then use an explicit
-            # format string.  The regex r'\.\d+$' removes ".05", ".000",
-            # ".5000000" etc. and is a no-op on second-precision strings.
+            valid = df['TIMESTAMP'].str.contains(_TIMESTAMP_PATTERN).fill_null(False)
+            if not valid.all():
+                raise ValueError('Invalid TOA5 timestamp or unsupported precision '
+                                 '(maximum 6 fractional digits)')
             df = df.with_columns(
                 pl.col('TIMESTAMP')
-                .str.replace(r'\.\d+$', '', literal=False)
-                .str.to_datetime(format='%Y-%m-%d %H:%M:%S', strict=False)
+                .str.to_datetime(format='%Y-%m-%d %H:%M:%S%.f',
+                                 time_unit='us', strict=False)
                 .alias('TIMESTAMP')
             )
+            if df['TIMESTAMP'].null_count():
+                raise ValueError('Invalid TOA5 timestamp')
 
     # --- Cast all non-timestamp columns to Float64 in one pass ------------
     numeric_cols = [c for c in df.columns if c not in ('TIMESTAMP', 'RECORD')]
@@ -171,7 +176,11 @@ def read_toa5(
     if cast_exprs:
         df = df.with_columns(cast_exprs)
 
-    # --- Optional diagnostic screening ------------------------------------
+    return _screen_diagnostics(df, drop_diagnostics, max_diag_value), metadata
+
+
+def _screen_diagnostics(df, drop_diagnostics, max_diag_value):
+    """Screen after duplicate comparison so raw conflicts remain visible."""
     if drop_diagnostics:
         if 'diag_sonic' in df.columns:
             sonic_cols = [c for c in ('Ux', 'Uy', 'Uz', 'T_SONIC', 'T_SONIC_corr')
@@ -196,7 +205,7 @@ def read_toa5(
                 for c in irga_cols
             ])
 
-    return df, metadata
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -302,14 +311,15 @@ def compile_toa5(
     max_diag_value: float = 0.0,
     recursive: bool = False,
     verbose: bool = True,
+    conflict_policy: str = 'error',
 ):
     """
     Compile multiple TOA5 files into a single DataFrame for long time series.
 
-    Handles overlapping timestamps (common when files span arbitrary periods)
-    by sorting chronologically and then keeping the first occurrence of each
-    duplicate timestamp.  All heavy operations (concat, sort, unique, gap
-    detection) run inside Polars' multi-threaded engine.
+    Compiles one station only; mixed station IDs raise ValueError.
+    Sample identity is the station ID plus the microsecond TIMESTAMP.
+    Identical parsed rows (including RECORD) are removed. Different rows at
+    the same timestamp are conflicts, resolved before diagnostic screening.
 
     Parameters
     ----------
@@ -329,6 +339,10 @@ def compile_toa5(
         Search subdirectories (default ``False``).
     verbose : bool
         Print progress information.
+    conflict_policy : {'error', 'first', 'last'}
+        Default 'error' rejects conflicting rows at one timestamp. 'first'
+        or 'last' selects by input file order, then row order. Directory
+        inputs use first timestamp order, breaking ties by sorted path.
 
     Returns
     -------
@@ -337,6 +351,8 @@ def compile_toa5(
     dict
         Compilation metadata (file count, time range, records, gaps).
     """
+    if conflict_policy not in ('error', 'first', 'last'):
+        raise ValueError("conflict_policy must be 'error', 'first', or 'last'")
     # --- Resolve file list -------------------------------------------------
     if isinstance(source, (str, Path)):
         source = Path(source)
@@ -368,15 +384,20 @@ def compile_toa5(
             df_i, meta_i = read_toa5(
                 fp,
                 parse_dates=True,
-                drop_diagnostics=drop_diagnostics,
+                drop_diagnostics=False,
                 max_diag_value=max_diag_value,
             )
             if all_metadata is None:
                 all_metadata = meta_i
+            elif meta_i['station_id'] != all_metadata['station_id']:
+                raise ValueError('compile_toa5 supports one station; '
+                                 'compile each station separately')
             total_raw_records += len(df_i)
             frames.append(df_i)
             if verbose:
                 print(f" {len(df_i):,} records")
+        except ValueError:
+            raise
         except Exception as e:
             if verbose:
                 print(f" FAILED: {e}")
@@ -391,11 +412,18 @@ def compile_toa5(
 
     # 'diagonal' fills any schema mismatches with null (safe for mixed setups)
     df = pl.concat(frames, how='diagonal')
-    df = df.sort('TIMESTAMP')
-
     n_before = len(df)
-    df = df.unique(subset=['TIMESTAMP'], keep='first', maintain_order=True)
+    n_distinct = df.unique().height
+    n_exact_duplicates = n_before - n_distinct
+    n_conflicts = n_distinct - df['TIMESTAMP'].n_unique()
+    if n_conflicts and conflict_policy == 'error':
+        raise ValueError(f'{n_conflicts} conflicting records at the same TIMESTAMP; '
+                         "choose conflict_policy='first' or 'last' to resolve")
+    df = df.unique(subset=['TIMESTAMP'],
+                   keep='last' if conflict_policy == 'last' else 'first',
+                   maintain_order=True).sort('TIMESTAMP')
     n_dupes = n_before - len(df)
+    df = _screen_diagnostics(df, drop_diagnostics, max_diag_value)
 
     # --- Date range filter -------------------------------------------------
     if start_date is not None:
@@ -410,13 +438,13 @@ def compile_toa5(
     # --- Detect gaps (fully vectorised with Polars diff) -------------------
     gaps = []
     if len(df) > 1:
-        dt_ms = (
-            df.select(pl.col('TIMESTAMP').diff().dt.total_milliseconds())
+        dt_us = (
+            df.select(pl.col('TIMESTAMP').diff().dt.total_microseconds())
             ['TIMESTAMP']           # column retains original name after select
             .to_numpy()
             .astype(float)
         )
-        dt_sec = dt_ms / 1000.0
+        dt_sec = dt_us / 1_000_000.0
 
         valid_dt = dt_sec[np.isfinite(dt_sec) & (dt_sec > 0)]
         median_dt = float(np.median(valid_dt)) if len(valid_dt) > 0 else 1.0
@@ -433,6 +461,10 @@ def compile_toa5(
         'n_files':              len(frames),
         'n_raw_records':        total_raw_records,
         'n_duplicates_removed': n_dupes,
+        'n_exact_duplicates_removed': n_exact_duplicates,
+        'n_conflicting_records': n_conflicts,
+        'conflict_policy':      conflict_policy,
+        'timestamp_precision': 'us',
         'n_final_records':      len(df),
         'time_start':           df['TIMESTAMP'][0]  if len(df) > 0 else None,
         'time_end':             df['TIMESTAMP'][-1] if len(df) > 0 else None,

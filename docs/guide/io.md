@@ -55,8 +55,27 @@ df, meta = tswift.compile_toa5(
 print(f"{len(df):,} rows from {meta['n_files']} files")
 ```
 
-`compile_toa5` reads every match, concatenates, sorts by `TIMESTAMP`, then
-drops duplicate timestamps keeping the first occurrence. `start_date` /
+Timestamps retain **microsecond precision** (`Datetime('us')`), without a
+timezone. Both the reader and scalar scanner accept whole seconds or 1–6
+fractional digits, including mixed precision in one file. Invalid or missing
+timestamps and more than six fractional digits are rejected, never truncated.
+The scanner warns and skips files with invalid first timestamps.
+
+`compile_toa5` supports one station per call and rejects mixed station IDs;
+compile and process each station separately. Sample identity is station ID
+plus the full timestamp. Exact repeated parsed rows, including `RECORD`, are
+removed. Different values at the same timestamp raise `ValueError` by default.
+To explicitly resolve these conflicts, use `conflict_policy="first"` or
+`"last"`. These select by input file order, then row order; directory inputs
+are ordered by first timestamp, with sorted paths breaking ties. Comparison
+happens before diagnostic screening. The output is sorted by timestamp.
+
+Metadata reports total removals in `n_duplicates_removed`, exact repetitions
+in `n_exact_duplicates_removed`, and additional distinct rows sharing a
+timestamp in `n_conflicting_records`, plus the selected `conflict_policy` and
+`timestamp_precision` (`"us"`).
+
+`start_date` /
 `end_date` are applied to the concatenated frame, so a file straddling the
 boundary is trimmed rather than dropped. The window is half-open —
 `start_date <= t < end_date` — so consecutive days chain without

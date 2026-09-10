@@ -375,12 +375,12 @@ def process_file(
     # wrong SiteConfig — skip every interval silently would be the only
     # outcome, so a clear warning is more helpful than silence.
     if len(df) > 10:
-        dt_ms_series = (
-            df[:10_000]["TIMESTAMP"].diff().dt.total_milliseconds().drop_nulls()
+        dt_us_series = (
+            df[:10_000]["TIMESTAMP"].diff().dt.total_microseconds().drop_nulls()
         )
-        dt_ms_pos = dt_ms_series.filter(dt_ms_series > 0)
-        if len(dt_ms_pos) > 0:
-            fs_data = 1000.0 / float(dt_ms_pos.median())
+        dt_us_pos = dt_us_series.filter(dt_us_series > 0)
+        if len(dt_us_pos) > 0:
+            fs_data = 1_000_000.0 / float(dt_us_pos.median())
             if abs(fs_data - config.sampling_freq) / config.sampling_freq > 0.20:
                 import warnings
 
