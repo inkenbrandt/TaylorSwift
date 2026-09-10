@@ -140,3 +140,52 @@ controls.
 `FluxConfig` belongs to the legacy `CalcFlux` pipelines and carries physical
 constants, KH-20 calibration coefficients, and the sonic boom orientation.
 See [Legacy flux pipelines](pipelines.md).
+
+## Input validity and gap filling
+
+`process_interval` owns private writable copies of all six channels, including
+arrays borrowed from pandas or Polars. Inputs must be one-dimensional, have equal
+lengths, and contain at least **four samples**, giving two positive FFT frequencies
+after linear detrending. Structural errors raise `ValueError` before screening.
+This is a computational minimum, not a recommendation for scientific averaging.
+
+`SiteConfig` validates finite positive sampling frequency, averaging period and
+effective measurement height (`z_measurement - d`). Heights and sensor time
+constants must be finite and nonnegative (measurement height must be positive).
+Settings are checked again when processing to catch later mutations.
+
+The missing-data defaults are:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `min_finite_fraction` | 0.95 for each of `u`, `v`, `w`, `T`, `co2`, `h2o` | Required fraction of original finite samples per channel |
+| `max_gap_seconds` | 1.0 | Maximum consecutive missing samples divided by sampling frequency; zero disables filling |
+| `endpoint_policy` | `"reject"` | Reject leading or trailing gaps; `"nearest"` allows constant extension from the nearest finite sample |
+
+NaN and either infinity count as missing. Interior gaps use linear interpolation.
+Endpoint extension obeys the same duration and completeness limits. At least two
+finite samples are always required. Each finite fraction must be in `(0, 1]`,
+and the dictionary must contain all six channel keys. For example:
+
+```python
+config = tswift.SiteConfig(max_gap_seconds=0.5, endpoint_policy="reject")
+config.min_finite_fraction["co2"] = 0.98
+```
+
+`result.qc_flags` contains `{channel}_finite_fraction` and `{channel}_status`.
+Statuses are `ok`, `interpolated`, `insufficient_finite_data`, `gap_too_long`,
+or `endpoint_gap`, checked in that order of failure priority. These fields are
+included in scalar table exports. `interval_status` is `ok`, `partial` (one or
+more invalid scalars), or `invalid_wind` (any invalid wind component).
+
+Invalid wind returns empty spectra and NaN statistics. Invalid scalars retain
+NaN arrays matching the wind frequency grid, with NaN covariances; invalid
+temperature also invalidates temperature mean, heat flux and stability results.
+Other usable channels remain available. The legacy `too_many_nans` flag denotes
+wind completeness failure and now includes infinities. Completeness is evaluated
+per channel rather than using the union of missing wind samples.
+
+`process_file` skips windows shorter than four samples or below its existing 90%
+record-count requirement. Fractional-second averaging periods are supported down
+to the timestamp resolution of one microsecond. `bins_per_decade` must be a
+positive integer.

@@ -108,24 +108,23 @@ class TestComputeCospectrum:
         np.testing.assert_allclose(freq_co, freq_sp)
         np.testing.assert_allclose(cospec, psd, rtol=1e-12)
 
-    def test_parseval_theorem(self):
-        """Integral of PSD ≈ variance of the signal (Parseval's theorem).
-
-        We use a loose tolerance because the Hamming window reduces the
-        effective variance, and one-sided doubling is an approximation.
-        """
-        n = 4096
+    @pytest.mark.parametrize("n", [1000, 1001])
+    @pytest.mark.parametrize("cross", [False, True])
+    def test_parseval_theorem(self, n, cross):
+        """Discrete integration equals windowed energy minus the omitted DC."""
         rng = np.random.default_rng(4)
         x = rng.normal(0, 1, n)
         x -= x.mean()
+        y = -0.7 * x + rng.normal(size=n) if cross else x
         fs = 20.0
-        freq, psd = compute_spectrum(x, fs=fs)
-        # df is roughly constant for rfft
-        df = freq[1] - freq[0]
-        integral = np.sum(psd) * df
-        variance = np.var(x)
-        # Allow 30% error: Hamming window reduces the apparent variance
-        assert integral == pytest.approx(variance, rel=0.30)
+        _, density = compute_cospectrum(x, y, fs=fs)
+        h = np.hamming(n)
+        s2 = np.sum(h**2)
+        expected = (np.sum(h**2 * x * y)
+                    - np.sum(h * x) * np.sum(h * y) / n) / s2
+        assert np.sum(density) * fs / n == pytest.approx(
+            expected, rel=1e-12, abs=1e-14
+        )
 
     def test_cross_spectrum_symmetry(self):
         """Co(x,y) and Co(y,x) should be equal (both are real parts)."""

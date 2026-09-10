@@ -152,6 +152,14 @@ class SiteConfig:
     irga_type: str = "open_path"  # 'open_path' or 'enclosed_path'
     model: str = "IRGASON"  # instrument model name
 
+    min_finite_fraction: dict[str, float] = field(
+        default_factory=lambda: {
+            key: 0.95 for key in ("u", "v", "w", "T", "co2", "h2o")
+        }
+    )
+    max_gap_seconds: float = 1.0
+    endpoint_policy: str = "reject"  # or "nearest"
+
     @property
     def sensor_separation_total(self) -> float:
         """Total sensor separation distance [m]."""
@@ -166,6 +174,36 @@ class SiteConfig:
             self.d = (2.0 / 3.0) * self.z_canopy
         if self.z0 is None:
             self.z0 = 0.1 * self.z_canopy
+        self.validate()
+
+    def validate(self):
+        """Validate spectral settings, including after caller mutation."""
+        for name in ("sampling_freq", "averaging_period", "z_measurement"):
+            value = getattr(self, name)
+            if not np.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name in (
+            "z_canopy",
+            "d",
+            "z0",
+            "tau_sonic_T",
+            "tau_T",
+            "tau_co2",
+            "tau_h2o",
+            "max_gap_seconds",
+        ):
+            value = getattr(self, name)
+            if not np.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be finite and nonnegative")
+        if not np.isfinite(self.z_eff) or self.z_eff <= 0:
+            raise ValueError("effective measurement height must be finite and positive")
+        if self.endpoint_policy not in ("reject", "nearest"):
+            raise ValueError("endpoint_policy must be 'reject' or 'nearest'")
+        if set(self.min_finite_fraction) != {"u", "v", "w", "T", "co2", "h2o"}:
+            raise ValueError("min_finite_fraction must specify u, v, w, T, co2, h2o")
+        for key, value in self.min_finite_fraction.items():
+            if not np.isfinite(value) or not 0 < value <= 1:
+                raise ValueError(f"min_finite_fraction[{key!r}] must be in (0, 1]")
 
     @property
     def z_eff(self) -> float:

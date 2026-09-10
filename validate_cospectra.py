@@ -80,17 +80,17 @@ def validate_basic_functions():
     print(f"  ✓ Log-binned to {len(freq_bin)} bins (from {len(freq_sp)})")
     print(f"  ✓ Bin frequency range: {freq_bin[0]:.4f} - {freq_bin[-1]:.2f} Hz")
 
-    # Test 6: Parseval's theorem (loose tolerance due to windowing)
+    # Test 6: Exact windowed Parseval identity with DC omitted
     print("\n[TEST 6] Parseval's theorem")
     df = freq_sp[1] - freq_sp[0]
     integral = np.sum(psd) * df
-    variance = np.var(x)
+    h = np.hamming(len(x))
+    variance = (np.sum((h * x)**2) - np.sum(h * x)**2 / len(x)) / np.sum(h**2)
     ratio = integral / variance if variance > 0 else 0
     print(f"  Integral of PSD: {integral:.4f}")
-    print(f"  Variance: {variance:.4f}")
+    print(f"  Windowed energy minus DC: {variance:.4f}")
     print(f"  Ratio: {ratio:.3f}")
-    # Hamming window reduces effective variance by ~20%, allow 50% error
-    assert 0.5 <= ratio <= 1.5, f"Parseval check failed: ratio = {ratio}"
+    np.testing.assert_allclose(integral, variance, rtol=1e-12, atol=1e-14)
     print(f"  ✓ Parseval's theorem satisfied (ratio={ratio:.3f})")
 
     print("\n✓ All basic function tests passed!")

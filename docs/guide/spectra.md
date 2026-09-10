@@ -49,6 +49,22 @@ frequencies, which is itself a flux loss — corrected later by
 ### 5. FFT
 
 A Hamming window is applied and the cross-spectral density computed by FFT.
+Density is divided by the sampling frequency times the sum of squared window
+weights. Non-DC bins are doubled, except the Nyquist bin for even-length
+records. Odd-length records have no Nyquist bin, so their final bin is doubled.
+DC is omitted in both cases.
+
+Before log-binning, with window weights $h_i$, $S_2=\sum_i h_i^2$, and
+$\Delta f=f_s/N$, the exact discrete identity is
+
+$$\Delta f\sum_{k>0}Co_{xy}(f_k)
+=\frac{\sum_i h_i^2 x_i y_i}{S_2}
+-\frac{(\sum_i h_i x_i)(\sum_i h_i y_i)}{N S_2}.$$
+
+For a power spectrum, set $y=x$. Window-energy normalization and DC omission
+do not guarantee equality to the unwindowed sample covariance or variance for
+every finite record, even after detrending. Use a discrete bin sum for this
+identity; trapezoidal integration underweights the endpoint bins.
 
 ### 6. Logarithmic binning
 
@@ -75,7 +91,10 @@ log-frequency axis represent equal contributions to the flux:
 | `spec_w` | $n \cdot S_w(n) / \sigma_w^2$ |
 
 The normalised forms are what you compare against the Kaimal curves; the
-unnormalised cospectra are what integrate back to the flux.
+unnormalised cospectra estimate the flux subject to the windowed identity above.
+Normalised cospectra use the unwindowed detrended covariance as their denominator
+and therefore need not integrate to exactly one. Log-binning further changes
+the discrete integration grid.
 
 ## Frequency axes
 

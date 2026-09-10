@@ -66,6 +66,14 @@ __all__ = [
 ]
 
 
+def _scale_one_sided(spectrum: np.ndarray, n: int) -> None:
+    """Scale an rFFT density in place along its last axis.
+
+    Only even-length records have a Nyquist bin, which must remain undoubled.
+    """
+    spectrum[..., 1:-1 if n % 2 == 0 else None] *= 2.0
+
+
 def compute_cospectrum(
     x: np.ndarray, y: np.ndarray, fs: float
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -73,7 +81,11 @@ def compute_cospectrum(
     Compute the one-sided cospectrum of two real signals.
 
     The cospectrum Co_xy(n) is the real part of the cross-spectral density.
-    Its integral over all frequencies equals the covariance cov(x', y').
+    Uses a symmetric Hamming window and window-energy normalization, with DC
+    omitted. For window ``h`` and ``S2 = sum(h**2)``, the exact discrete identity
+    is ``sum(cospec) * fs/N = sum(h**2*x*y)/S2
+    - sum(h*x)*sum(h*y)/(N*S2)``. This need not equal the unwindowed sample
+    covariance for a finite record, even when the inputs are detrended.
 
     Parameters
     ----------
@@ -92,7 +104,7 @@ def compute_cospectrum(
     N = len(x)
     # Apply Hamming window to reduce spectral leakage
     window = np.hamming(N)
-    # Window correction factor for energy preservation
+    # Window energy for density normalization
     S2 = np.sum(window**2)
 
     xw = x * window
@@ -108,8 +120,7 @@ def compute_cospectrum(
     # (S2 corrects for the window energy)
     Sxy = Sxy / (fs * S2)
 
-    # One-sided: double all except DC and Nyquist
-    Sxy[1:-1] *= 2.0
+    _scale_one_sided(Sxy, N)
 
     # Cospectrum = real part
     cospec = np.real(Sxy)
@@ -135,9 +146,14 @@ def compute_spectrum(x: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
     Returns
     -------
     freq : np.ndarray
-        Frequency array [Hz].
+        Frequency array [Hz] (positive only, excluding DC).
     psd : np.ndarray
         One-sided power spectral density [units²/Hz].
+
+    Notes
+    -----
+    Uses the windowed identity in :func:`compute_cospectrum` with ``y = x``;
+    its discrete integral need not equal the unwindowed sample variance.
     """
     freq, cospec = compute_cospectrum(x, x, fs)
     return freq, cospec

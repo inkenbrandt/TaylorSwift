@@ -25,7 +25,7 @@ import polars as pl
 
 from .config import SiteConfig
 from .constants import G0, K_VON_KARMAN
-from .cospectra import log_bin
+from .cospectra import _scale_one_sided, log_bin
 from .results import SpectralResult
 from .rotations import rotate_wind
 from .screening import ScreeningConfig, vickers_mahrt_screen
@@ -34,6 +34,15 @@ from .screening import ScreeningConfig, vickers_mahrt_screen
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+def _validate_bins(bins_per_decade):
+    if (
+        isinstance(bins_per_decade, (bool, np.bool_))
+        or not isinstance(bins_per_decade, (int, np.integer))
+        or bins_per_decade <= 0
+    ):
+        raise ValueError("bins_per_decade must be a positive integer")
+
+
 def _detrend_linear(arr: np.ndarray) -> np.ndarray:
     """NaN-safe linear detrend of a 1-D array."""
     out = arr.copy()
@@ -77,8 +86,13 @@ def process_interval(
     records diagnostic flags (spike counts, amplitude resolution, dropouts,
     absolute limits, skewness/kurtosis) into ``qc_flags`` under ``vm97_*`` keys;
     it is *diagnostic only* and never discards the interval on its own.
-    Intervals with >5% NaN in wind data still short-circuit with
-    `qc_flags['too_many_nans'] = True` and empty spectra.
+    Inputs are copied and must be equal-length, one-dimensional arrays with
+    at least four samples (two positive FFT frequencies after detrending).
+    NaN and infinity count as missing. SiteConfig controls finite fractions,
+    gap duration and endpoint filling. Invalid wind yields empty spectra;
+    invalid scalars yield NaN products aligned to the wind frequency grid.
+    ``qc_flags`` records ``{channel}_status``, ``{channel}_finite_fraction``
+    and ``interval_status``. Invalid shapes, sizes or settings raise ValueError.
 
     Parameters
     ----------
@@ -105,15 +119,23 @@ def process_interval(
     -------
     SpectralResult
     """
+    config.validate()
+    _validate_bins(bins_per_decade)
     fs = config.sampling_freq
     z = config.z_eff
     res = SpectralResult(timestamp_start=timestamp_start, timestamp_end=timestamp_end)
 
     # --- Convert to arrays and screen for NaN runs -------------------------
     arrs = [
-        np.asarray(a, dtype=np.float64)
+        np.array(a, dtype=np.float64, copy=True)
         for a in [u_raw, v_raw, w_raw, T_sonic, co2, h2o]
     ]
+    if any(a.ndim != 1 for a in arrs):
+        raise ValueError("all six inputs must be one-dimensional")
+    if len({a.size for a in arrs}) != 1:
+        raise ValueError("all six inputs must have equal length")
+    if arrs[0].size < 4:
+        raise ValueError("at least 4 samples per channel are required")
     u_r, v_r, w_r, Ts, c, q = arrs
 
     # --- Vickers & Mahrt (1997) raw-data screening -------------------------
@@ -127,19 +149,47 @@ def process_interval(
         )
     )
 
-    # Drop intervals where wind data is >5% NaN
-    wind_nan_frac = np.mean(np.isnan(u_r) | np.isnan(v_r) | np.isnan(w_r))
-    if wind_nan_frac > 0.05:
-        res.qc_flags["too_many_nans"] = True
-        return res
-
-    # Simple gap-fill: linear interpolation for short gaps
-    for arr in [u_r, v_r, w_r, Ts, c, q]:
-        nans = np.isnan(arr)
-        if nans.any() and (~nans).sum() > 2:
-            arr[nans] = np.interp(
-                np.flatnonzero(nans), np.flatnonzero(~nans), arr[~nans]
+    channels = ("u", "v", "w", "T", "co2", "h2o")
+    valid_channels = {}
+    for key, arr in zip(channels, arrs, strict=True):
+        finite = np.isfinite(arr)
+        fraction = float(finite.mean())
+        missing = ~finite
+        edges = np.diff(np.r_[False, missing, False].astype(int))
+        starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+        status = "ok"
+        if fraction < config.min_finite_fraction[key] or finite.sum() < 2:
+            status = "insufficient_finite_data"
+        elif np.any((ends - starts) / fs > config.max_gap_seconds):
+            status = "gap_too_long"
+        elif (
+            missing.any()
+            and (missing[0] or missing[-1])
+            and config.endpoint_policy == "reject"
+        ):
+            status = "endpoint_gap"
+        elif missing.any():
+            arr[missing] = np.interp(
+                np.flatnonzero(missing), np.flatnonzero(finite), arr[finite]
             )
+            status = "interpolated"
+        valid_channels[key] = status in ("ok", "interpolated")
+        res.qc_flags[f"{key}_status"] = status
+        res.qc_flags[f"{key}_finite_fraction"] = fraction
+        if not valid_channels[key]:
+            # Safe FFT placeholders; dependent products are masked below.
+            arr.fill(0.0)
+
+    if not all(valid_channels[key] for key in channels[:3]):
+        res.qc_flags["interval_status"] = "invalid_wind"
+        res.qc_flags["too_many_nans"] = any(
+            res.qc_flags[f"{key}_status"] == "insufficient_finite_data"
+            for key in channels[:3]
+        )
+        return res
+    res.qc_flags["interval_status"] = (
+        "ok" if all(valid_channels.values()) else "partial"
+    )
 
     # --- Double rotation ---------------------------------------------------
     u, v, w, wind_dir = rotate_wind(u_r, v_r, w_r)
@@ -200,7 +250,7 @@ def process_interval(
     def _csd(X, Y):
         """One-sided cospectral density from pre-computed FFTs."""
         Sxy = X * np.conj(Y) * norm
-        Sxy[1:-1] *= 2.0
+        _scale_one_sided(Sxy, N)
         return np.real(Sxy)[1:]  # drop DC component
 
     # All cross-spectra from the same 6 FFT arrays — no redundant transforms
@@ -259,6 +309,18 @@ def process_interval(
     res.ogive_wCO2 = _ogive(cosp_wCO2_raw)
     res.ogive_wH2O = _ogive(cosp_wH2O_raw)
 
+    for key, suffix, covariance in (
+        ("T", "wT", "cov_wT"),
+        ("co2", "wCO2", "cov_wCO2"),
+        ("h2o", "wH2O", "cov_wH2O"),
+    ):
+        if not valid_channels[key]:
+            setattr(res, covariance, np.nan)
+            for prefix in ("cosp_", "ncosp_", "ogive_"):
+                setattr(res, prefix + suffix, np.full_like(res.freq, np.nan))
+    if not valid_channels["T"]:
+        res.T_mean = res.H = res.L = res.zL = np.nan
+        res.spec_T = np.full_like(res.freq, np.nan)
     return res
 
 
@@ -317,6 +379,9 @@ def process_file(
         One result per averaging interval.
     """
 
+    config.validate()
+    _validate_bins(bins_per_decade)
+
     # Normalise to Polars (cheap no-op if already Polars)
     if not isinstance(df, pl.DataFrame):
         df = pl.from_pandas(df)
@@ -345,21 +410,20 @@ def process_file(
         df = df.sort("TIMESTAMP")
 
     # --- Build interval edge list without pandas ---------------------------
-    period_sec = int(config.averaging_period * 60)
+    period_sec = config.averaging_period * 60
     td = timedelta(seconds=period_sec)
+    if td <= timedelta(0):
+        raise ValueError("averaging_period must be at least one microsecond")
 
     t0_raw = df["TIMESTAMP"][0]  # Python datetime from Polars Datetime column
     t_end = df["TIMESTAMP"][-1]
 
     # Floor t0 to the nearest averaging-period boundary within its day
     day_secs = t0_raw.hour * 3600 + t0_raw.minute * 60 + t0_raw.second
+    day_secs += t0_raw.microsecond / 1_000_000
     floored = (day_secs // period_sec) * period_sec
-    t_start = t0_raw.replace(
-        hour=floored // 3600,
-        minute=(floored % 3600) // 60,
-        second=floored % 60,
-        microsecond=0,
-    )
+    t_start = t0_raw.replace(hour=0, minute=0, second=0, microsecond=0)
+    t_start += timedelta(seconds=floored)
 
     edges = []
     t = t_start
@@ -406,7 +470,7 @@ def process_file(
     for i in range(len(edges) - 1):
         sub = df[int(bounds[i]) : int(bounds[i + 1])]
 
-        if len(sub) < 0.9 * n_expected:
+        if len(sub) < max(4, 0.9 * n_expected):
             continue  # skip intervals with > 10 % missing records
 
         res = process_interval(
