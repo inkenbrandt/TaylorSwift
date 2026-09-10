@@ -72,6 +72,23 @@ fig, axes = tswift.plot_cospectra(results)
 fig.savefig("cospectra.pdf")
 ```
 
+## Jupyter notebook examples
+
+Install the interactive tools with `pip install -e ".[notebooks]"` from the
+repository root, then run `jupyter notebook`. Select the environment where the
+package is installed and run each notebook from top to bottom.
+
+- [TOA5 processing workflow](examples/01_toa5_processing_workflow.ipynb): load the
+  bundled synthetic sample, inspect and despike signals, compute spectra and QC,
+  plot cospectra/power spectra/ogives, apply corrections, and export results.
+- [Multiple intervals and QC](examples/02_multi_interval_qc_and_plots.ipynb):
+  generate reproducible sample data, inspect a deliberately missing wind segment,
+  plot interval summaries and heat flux, and export diagnostic tables.
+
+Both notebooks run independently without downloading data. Figures appear inline;
+PNG/PDF plots and CSV/Parquet tables are saved under `examples/outputs/`.
+The synthetic examples illustrate software behavior, not field-data validation.
+
 ## Processing pipeline
 
 ```
