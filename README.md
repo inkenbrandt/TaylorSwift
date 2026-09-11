@@ -94,6 +94,19 @@ The synthetic examples illustrate software behavior, not field-data validation.
   short time-grid gaps, tune despiking, compare spectra, apply spectral and
   measured-pressure WPL corrections, and export plots and results. The default
   reads one hour; instrument and site assumptions are adjustable in the notebook.
+- [Wellington with ec_spectral](examples/05_wellington_ec_spectral.ipynb):
+  use the same local dataset directly with `ec_spectral` for bounded gap filling,
+  wind rotation, CO₂ lag detection, cospectrum fitting, six diagnostic plots,
+  and analytical/integral covariance correction estimates. Includes executed
+  outputs and explicit notes on the weak fits in the example intervals.
+- [Wellington H₂O with ec_spectral](examples/06_wellington_h2o_ec_spectral.ipynb):
+  run the same workflow on `H2O_density` with water-vapor settings, diagnostic
+  plots, and covariance corrections in g/m²/s. Includes executed outputs;
+  WPL and latent heat conversion are not applied.
+- [Wellington averaging-period comparison](examples/07_wellington_averaging_comparison.ipynb):
+  compare 30-, 60-, and 120-minute H₂O spectra over the full 21-day record using
+  matched observations, stationarity screens, and taper sensitivity checks.
+  See the [findings and recommendation](examples/wellington_averaging_findings.md).
 
 ## Processing pipeline
 

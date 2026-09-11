@@ -28,6 +28,23 @@ timestamp, `double_rotation` rotates wind, and `despike` supplies a simple
 rolling median/MAD filter. Existing package screening and despiking routines
 remain available for more comprehensive quality control.
 
+For a worked Parquet example, run
+`examples/05_wellington_ec_spectral.ipynb` with the local
+`data/output/Wellington_filtered.parquet` dataset. It reads one hour, checks and
+restores short timestamp gaps, rotates wind, aligns CO₂, fits cospectra, and
+exports diagnostic plots and correction estimates. The executed example's weak
+fits are documented; instrument settings are illustrative assumptions.
+The companion `examples/06_wellington_h2o_ec_spectral.ipynb` demonstrates the
+same workflow with `H2O_density` and `ECSystem(scalar="h2o")`. Covariances are
+reported in g/m²/s under the assumed input units, before WPL correction or
+conversion to latent heat flux. Each notebook exports to its own directory.
+
+`examples/07_wellington_averaging_comparison.ipynb` compares matched 30-, 60-,
+and 120-minute H₂O intervals across the available Wellington record. It includes
+common-band fits, ogive diagnostics, stationarity and detrending checks, and an
+untapered sensitivity run. See `examples/wellington_averaging_findings.md` for
+the provisional recommendation and its limits.
+
 ## Conventions and limits
 
 - Frequencies and sampling rate are Hz; lengths are metres; time constants and
