@@ -8,7 +8,8 @@ import polars as pl
 from KDEpy import FFTKDE
 from scipy.interpolate import interp1d
 
-from .frame_utils import rolling_median_centered
+from ._signal_utils import mad_outlier_mask
+from .frame_utils import _with_rolling_stats, rolling_median_centered
 
 
 def despike(arr, nstd: float = 4.5) -> np.ndarray:
@@ -468,12 +469,7 @@ def mad_outliers(data: np.ndarray, threshold: float = 3.5) -> np.ndarray:
     >>> CalcFlux.mad_outliers(x)
     array([False, False, False, False,  True])
     """
-    median = np.median(data)
-    mad = np.median(np.abs(data - median))
-    if mad == 0:
-        return np.zeros_like(data, dtype=bool)
-    modified_zscore = 0.6745 * (data - median) / mad
-    return np.abs(modified_zscore) > threshold
+    return mad_outlier_mask(data, threshold, ignore_nan=False)
 
 
 def spike_detection(
@@ -645,21 +641,9 @@ def rolling_sigma_filter(
     if output_col is None:
         output_col = f"{value_col}_filtered"
 
-    # Step 1: ensure sort & datetime type
-    out = df.sort(time_col)
-    if ensure_datetime:
-        out = out.with_columns(pl.col(time_col).cast(pl.Datetime))
-
-    # Step 2: rolling mean/std on the chosen column
-    roll = out.rolling(index_column=time_col, period=period, closed=closed).agg(
-        [
-            pl.col(value_col).mean().alias(f"{value_col}_roll_mean"),
-            pl.col(value_col).std().alias(f"{value_col}_roll_std"),
-        ]
+    out = _with_rolling_stats(
+        df, value_col, time_col, period, closed, ensure_datetime=ensure_datetime
     )
-
-    # Step 3: join stats back
-    out = out.join(roll, on=time_col, how="left")
 
     mu = pl.col(f"{value_col}_roll_mean")
     sd = pl.col(f"{value_col}_roll_std")

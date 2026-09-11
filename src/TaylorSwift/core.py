@@ -23,8 +23,9 @@ from datetime import timedelta
 import numpy as np
 import polars as pl
 
+from ._signal_utils import detrend_linear
 from .config import SiteConfig
-from .constants import G0, K_VON_KARMAN
+from .constants import G0, K_VON_KARMAN, T_ZERO_C
 from .cospectra import _scale_one_sided, log_bin
 from .results import SpectralResult
 from .rotations import rotate_wind
@@ -45,19 +46,7 @@ def _validate_bins(bins_per_decade):
 
 def _detrend_linear(arr: np.ndarray) -> np.ndarray:
     """NaN-safe linear detrend of a 1-D array."""
-    out = arr.copy()
-    valid = np.isfinite(arr)
-    if valid.sum() < 2:
-        return out
-    t = np.arange(len(arr), dtype=np.float64)
-    t_v = t[valid]
-    a_v = arr[valid]
-    t_c = t_v - t_v.mean()
-    t_var = float(np.dot(t_c, t_c))
-    slope = float(np.dot(t_c, a_v - a_v.mean())) / t_var
-    intercept = a_v.mean() - slope * t_v.mean()
-    out -= slope * t + intercept
-    return out
+    return detrend_linear(arr)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +205,7 @@ def process_interval(
 
     # --- Turbulence statistics ---------------------------------------------
     res.T_mean = float(np.nanmean(Ts))
-    T_K = res.T_mean + 273.15  # approximate potential temperature
+    T_K = res.T_mean + T_ZERO_C  # approximate potential temperature
 
     res.cov_wT = float(np.nanmean(w_p * T_p))
     res.cov_wu = float(np.nanmean(w_p * u_p))

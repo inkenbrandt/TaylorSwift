@@ -59,6 +59,7 @@ __all__ = [
     "tf_sonic_line_averaging",
     "tf_scalar_path_averaging",
     "tf_sensor_separation",
+    "tf_lateral_separation",
     "combined_transfer_function",
     "kaimal_cospec_model",
     "massman_alpha_x",
@@ -230,6 +231,20 @@ def tf_scalar_path_averaging(
     return tf_sonic_line_averaging(freq, u_mean, path_length)
 
 
+def tf_lateral_separation(n, s, u):
+    """Moore (1986) lateral separation response for frequency n, distance s, wind u.
+
+    Unlike ``tf_sensor_separation``, this raw model applies no instrument
+    cutoffs. Its historical argument names are retained for ec_spectral users.
+    """
+    return _lateral_separation_response(np.asarray(n, float), s, u)
+
+
+def _lateral_separation_response(freq, separation, u_mean):
+    """Shared attenuation kernel; wrappers retain their dtype and cutoff rules."""
+    return np.exp(-9.9 * (freq * separation / u_mean) ** 1.5)
+
+
 def tf_sensor_separation(
     freq: np.ndarray,
     u_mean: float,
@@ -263,8 +278,7 @@ def tf_sensor_separation(
     if separation <= 0.001 or u_mean <= 0.1:
         return np.ones_like(freq)
 
-    nd_U = freq * separation / u_mean
-    return np.exp(-9.9 * nd_U**1.5)
+    return _lateral_separation_response(freq, separation, u_mean)
 
 
 # ===================================================================

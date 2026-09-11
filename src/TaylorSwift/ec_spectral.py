@@ -67,7 +67,10 @@ import pandas as pd
 from scipy import optimize
 from scipy.special import xlogy
 
+from .constants import D_MOL as D_MOL
+from .constants import NU_AIR as NU_AIR
 from .transfer_functions import _trapezoid as _trapz
+from .transfer_functions import tf_lateral_separation as tf_lateral_separation
 
 
 def _pyplot():
@@ -92,11 +95,6 @@ def _pair(w, c):
             "signals must be equal-length 1-D arrays with at least three samples"
         )
     return w, c
-
-
-# molecular diffusion coefficients in air, m2 s-1 (used for laminar tube loss)
-D_MOL = {"co2": 1.6e-5, "h2o": 2.5e-5, "ch4": 2.2e-5}
-NU_AIR = 1.5e-5  # kinematic viscosity of air, m2 s-1
 
 
 # Kaimal et al. (1972) flat-terrain neutral peak frequencies, eta'_x = fx (z-d)/u
@@ -554,11 +552,6 @@ def tf_sonic_path(n, p, u):
 def tf_scalar_path(n, p, u):
     """Scalar line averaging along an open path of length p (Moore 1986): sinc(np/u)."""
     return np.abs(np.sinc(np.asarray(n, float) * p / u))
-
-
-def tf_lateral_separation(n, s, u):
-    """Lateral sensor separation, Ts(fs) = exp(-9.9 fs^1.5), fs = n s / u."""
-    return np.exp(-9.9 * (np.asarray(n, float) * s / u) ** 1.5)
 
 
 def tf_tube_laminar(n, r, X, U, D):

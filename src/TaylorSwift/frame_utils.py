@@ -1,10 +1,36 @@
 """Utility functions for working with pandas and polars DataFrames."""
 
 import pathlib
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 import polars as pl
+
+
+def _with_rolling_stats(
+    df: pl.DataFrame,
+    value_col: str,
+    time_col: str,
+    period: str,
+    closed: Literal["left", "right", "both", "none"],
+    *,
+    ensure_datetime: bool = False,
+) -> pl.DataFrame:
+    """Sort and join time-window statistics for the spike-filter APIs.
+
+    Window inclusion and timestamp casting remain choices of the caller.
+    """
+    out = df.sort(time_col)
+    if ensure_datetime:
+        out = out.with_columns(pl.col(time_col).cast(pl.Datetime))
+    roll = out.rolling(index_column=time_col, period=period, closed=closed).agg(
+        [
+            pl.col(value_col).mean().alias(f"{value_col}_roll_mean"),
+            pl.col(value_col).std().alias(f"{value_col}_roll_std"),
+        ]
+    )
+    return out.join(roll, on=time_col, how="left")
 
 
 def to_pl_df(df):

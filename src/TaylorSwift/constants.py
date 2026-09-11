@@ -26,6 +26,8 @@ __all__ = [
     # Gas properties and constants
     "MOLAR_MASS",
     "R_SPECIFIC",
+    "D_MOL",
+    "NU_AIR",
     # Temperature
     "T_ZERO_C",
     "T_TRIPLE_POINT",
@@ -72,6 +74,10 @@ R_SPECIFIC = {
     "dry_air": 287.04,  # Specific gas constant for dry air (J/kg/K)
     "water_vapor": 461.51,  # Specific gas constant for water vapor (J/kg/K)
 }
+
+# Molecular diffusion coefficients in air (m2/s), used for laminar tube loss.
+D_MOL = {"co2": 1.6e-5, "h2o": 2.5e-5, "ch4": 2.2e-5}
+NU_AIR = 1.5e-5  # Kinematic viscosity of air (m2/s)
 
 # Temperature conversions
 T_ZERO_C = 273.15  # 0°C in Kelvin

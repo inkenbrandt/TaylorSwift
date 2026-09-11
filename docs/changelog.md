@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Consolidate detrending and MAD kernels, rolling-window statistics, lateral
+  separation response, and physical constants into shared modules. Preserve
+  existing imports, defaults, precision, and missing-value policies; add
+  regression coverage for the differences between the processing APIs.
 - Add `ec_spectral`: lag diagnostics, fitted cospectra, tube response models,
   covariance corrections and uncertainty, diagnostic plots, and a synthetic
   example notebook with numerical regression tests.

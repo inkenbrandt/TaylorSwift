@@ -36,27 +36,16 @@ from enum import IntEnum
 import numpy as np
 import polars as pl
 
+from ._signal_utils import detrend_linear, mad_outlier_mask
+from .frame_utils import _with_rolling_stats
+
 
 # ---------------------------------------------------------------------------
 # Internal helper
 # ---------------------------------------------------------------------------
 def _detrend_linear(arr: np.ndarray) -> np.ndarray:
     """NaN-safe linear detrend of a 1-D array."""
-    out = arr.copy().astype(np.float64)
-    valid = np.isfinite(arr)
-    if valid.sum() < 2:
-        return out
-    t = np.arange(len(arr), dtype=np.float64)
-    t_v = t[valid]
-    a_v = arr[valid]
-    t_c = t_v - t_v.mean()
-    t_var = float(np.dot(t_c, t_c))
-    if t_var == 0:
-        return out - a_v.mean()
-    slope = float(np.dot(t_c, a_v - a_v.mean())) / t_var
-    intercept = a_v.mean() - slope * t_v.mean()
-    out -= slope * t + intercept
-    return out
+    return detrend_linear(arr, promote_float=True)
 
 
 # ---------------------------------------------------------------------------
@@ -674,12 +663,7 @@ class OutlierDetection:
         Uses the modified Z-score: 0.6745 * |x - median| / MAD > threshold.
         """
         x = np.asarray(x, dtype=float)
-        med = np.nanmedian(x)
-        mad = np.nanmedian(np.abs(x - med))
-        if mad == 0:
-            return np.zeros(len(x), dtype=bool)
-        modified_z = 0.6745 * np.abs(x - med) / mad
-        return modified_z > threshold
+        return mad_outlier_mask(x, threshold, ignore_nan=True)
 
     @staticmethod
     def spike_detection(
@@ -745,21 +729,7 @@ def rolling_sigma_filter(
     roll_mean_col = f"{value_col}_roll_mean"
     roll_std_col = f"{value_col}_roll_std"
 
-    # Sort by timestamp (required for Polars rolling)
-    out = df.sort("TIMESTAMP")
-
-    # Backward-looking window that excludes the current row (closed="left").
-    # This prevents a spike from contaminating its own reference statistics,
-    # ensuring it is detectable at the requested sigma threshold.
-    roll = (
-        out.rolling(index_column="TIMESTAMP", period=period, closed="left")
-        .agg([
-            pl.col(value_col).mean().alias(roll_mean_col),
-            pl.col(value_col).std().alias(roll_std_col),
-        ])
-    )
-
-    out = out.join(roll, on="TIMESTAMP", how="left")
+    out = _with_rolling_stats(df, value_col, "TIMESTAMP", period, "left")
 
     out = out.with_columns(
         pl.when(

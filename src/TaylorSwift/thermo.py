@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .constants import R_SPECIFIC, T_ZERO_C
+
 
 def convert_KtoC(T):
     """Convert temperature from Kelvin to Celsius.
@@ -16,7 +18,7 @@ def convert_KtoC(T):
     float
         Temperature in Celsius.
     """
-    return T - 273.15
+    return T - T_ZERO_C
 
 
 def convert_CtoK(T):
@@ -32,7 +34,7 @@ def convert_CtoK(T):
     float
         Temperature in Kelvin.
     """
-    return T + 273.15
+    return T + T_ZERO_C
 
 
 def tetens(t, a: float = 0.611, b: float = 17.502, c: float = 240.97):
@@ -57,7 +59,7 @@ def tetens(t, a: float = 0.611, b: float = 17.502, c: float = 240.97):
     return a * np.exp((b * t) / (t + c))
 
 
-def calc_E(pV, T, Rv: float = 461.51):
+def calc_E(pV, T, Rv: float = R_SPECIFIC["water_vapor"]):
     """Calculate vapor pressure from partial pressure and temperature.
 
     Parameters
@@ -97,7 +99,7 @@ def calc_Q(P, E, epsilon: float = 18.016 / 28.97):
     return (epsilon * E) / (P - (1.0 - epsilon) * E)
 
 
-def calc_pV(E, T, Rv: float = 461.51):
+def calc_pV(E, T, Rv: float = R_SPECIFIC["water_vapor"]):
     """Calculate partial pressure of water vapor from vapor pressure and temperature.
     Parameters
     ----------
@@ -134,7 +136,7 @@ def calc_Tsa(Ts, Q):
     return Ts / (1.0 + 0.51 * Q)
 
 
-def calc_Tsa_sonic_temp(Ts, P, pV, Rv: float = 461.51):
+def calc_Tsa_sonic_temp(Ts, P, pV, Rv: float = R_SPECIFIC["water_vapor"]):
     """Calculate sonic temperature from static temperature, total pressure, and partial pressure of water vapor.
 
     Parameters
