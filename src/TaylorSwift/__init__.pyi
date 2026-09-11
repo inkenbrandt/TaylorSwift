@@ -54,3 +54,11 @@ from .transfer_functions import kaimal_cospec_model as kaimal_cospec_model
 
 __version__: str
 __all__: list[str]
+
+from .ec_spectral import ECSystem as ECSystem
+from .ec_spectral import correct_flux_table as correct_flux_table
+from .ec_spectral import correction_factor_analytical as correction_factor_analytical
+from .ec_spectral import correction_factor_integral as correction_factor_integral
+from .ec_spectral import correction_uncertainty as correction_uncertainty
+from .ec_spectral import equivalent_time_constants as equivalent_time_constants
+from .ec_spectral import fit_cospectrum as fit_cospectrum

@@ -139,6 +139,7 @@ nav:
       - Raw-data screening: guide/screening.md
       - Despiking: guide/despiking.md
       - Spectra and cospectra: guide/spectra.md
+      - Fitted spectral diagnostics: guide/ec-spectral.md
       - Spectral corrections: guide/corrections.md
       - Quality control: guide/quality-control.md
       - Exporting results: guide/results.md
@@ -153,6 +154,7 @@ nav:
       - Screening: api/screening.md
       - Despike: api/despike.md
       - Corrections: api/corrections.md
+      - Spectral diagnostics: api/ec_spectral.md
       - Transfer functions: api/transfer_functions.md
       - Data quality: api/data_quality.md
       - Results: api/results.md

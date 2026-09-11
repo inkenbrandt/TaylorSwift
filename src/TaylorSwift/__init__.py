@@ -10,6 +10,15 @@ from importlib import import_module
 _DISTRIBUTION_NAME = "taylorswift-spectra"
 
 _EXPORTS = {
+    # Standalone spectral diagnostics and response models
+    "ECSystem": (".ec_spectral", "ECSystem"),
+    "fit_cospectrum": (".ec_spectral", "fit_cospectrum"),
+    "correction_factor_integral": (".ec_spectral", "correction_factor_integral"),
+    "correction_factor_analytical": (".ec_spectral", "correction_factor_analytical"),
+    "correction_uncertainty": (".ec_spectral", "correction_uncertainty"),
+    "equivalent_time_constants": (".ec_spectral", "equivalent_time_constants"),
+    "correct_flux_table": (".ec_spectral", "correct_flux_table"),
+
     # Core spectral computation
     "compute_cospectrum": (".cospectra", "compute_cospectrum"),
     "compute_spectrum": (".cospectra", "compute_spectrum"),

@@ -89,6 +89,12 @@ Both notebooks run independently without downloading data. Figures appear inline
 PNG/PDF plots and CSV/Parquet tables are saved under `examples/outputs/`.
 The synthetic examples illustrate software behavior, not field-data validation.
 
+- [Wellington spectral workflow](examples/03_wellington_spectral_workflow.ipynb):
+  use the local `data/output/Wellington_filtered.parquet` file to check and fill
+  short time-grid gaps, tune despiking, compare spectra, apply spectral and
+  measured-pressure WPL corrections, and export plots and results. The default
+  reads one hour; instrument and site assumptions are adjustable in the notebook.
+
 ## Processing pipeline
 
 ```

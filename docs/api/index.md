@@ -123,3 +123,10 @@ module. The top-level spelling is the stable one; module paths may move.
 | `QualityThreshold` | [constants](constants.md) |
 | `get_displacement_height` | [constants](constants.md) |
 | `get_roughness_length` | [constants](constants.md) |
+
+### Fitted spectral diagnostics
+
+The [ec_spectral module](ec_spectral.md) provides the full diagnostic API.
+Top-level exports include `ECSystem`, `fit_cospectrum`,
+`correction_factor_integral`, `correction_factor_analytical`,
+`correction_uncertainty`, `equivalent_time_constants`, and `correct_flux_table`.

@@ -179,3 +179,8 @@ preprocessing. See the [cospectra API](../api/cospectra.md).
 - [Spectral corrections](corrections.md) — recovering the attenuated flux
 - [Quality control](quality-control.md) — deciding which intervals to keep
 - [Exporting results](results.md) — getting to a table
+
+## Fitted spectral diagnostics
+
+For lag alignment, Massman fitting, tube response models, and uncertainty, see
+[the spectral diagnostics workflow](ec-spectral.md).

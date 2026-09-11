@@ -44,6 +44,7 @@ def _iter_from_imports():
             if names.strip().startswith("("):  # no parenthesised forms in the docs
                 continue
             for name in (n.strip() for n in names.split(",")):
+                name = name.split(" as ", 1)[0].strip()
                 if name and name != "*":
                     yield path, module, name
 

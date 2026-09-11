@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add `ec_spectral`: lag diagnostics, fitted cospectra, tube response models,
+  covariance corrections and uncertainty, diagnostic plots, and a synthetic
+  example notebook with numerical regression tests.
+
+
 All notable changes to this project are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
