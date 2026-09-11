@@ -12,7 +12,72 @@ import numpy as np
 import polars as pl
 import pytest
 
-from TaylorSwift.despike import rolling_sigma_filter, spike_detection
+from TaylorSwift.despike import (
+    despike_dataframe,
+    polars_ukde_despike,
+    rolling_sigma_filter,
+    spike_detection,
+)
+
+
+class TestPolarsUKDE:
+    @pytest.mark.parametrize("pandas_input", [False, True])
+    def test_default_preserves_frame_and_removes_spike(self, pandas_input):
+        import pandas as pd
+
+        values = np.random.default_rng(42).normal(size=2000)
+        values[500] = 100
+        raw = pl.DataFrame({"x": values, "x_cleaned": ["keep"] * len(values)})
+        expected = polars_ukde_despike(raw.select("x"), "x")["x_cleaned"].to_numpy()
+        if pandas_input:
+            raw = raw.to_pandas()
+            raw.index = pd.date_range("2024-01-01", periods=len(raw), freq="s")
+        result = despike_dataframe(raw, ["x", "absent"])
+        np.testing.assert_allclose(result["x"].to_numpy(), expected, equal_nan=True)
+        assert abs(result["x"].to_numpy()[500]) < 5
+        assert list(result.columns) == list(raw.columns)
+        assert raw["x"].to_numpy()[500] == 100
+        assert result["x_cleaned"].to_list() == ["keep"] * len(values)
+        if pandas_input:
+            pd.testing.assert_index_equal(raw.index, result.index)
+
+    def test_bulk_range_can_retain_a_rare_population(self):
+        values = np.random.default_rng(24).normal(size=2000)
+        values[900:920] = 12
+        raw = pl.DataFrame({"x": values})
+        narrow = despike_dataframe(raw, ["x"], prob_threshold=1e-6)
+        wide = despike_dataframe(raw, ["x"], prob_threshold=1e-6, bulk_iqr=None)
+        assert np.all(narrow["x"].to_numpy()[900:920] != 12)
+        np.testing.assert_array_equal(wide["x"].to_numpy()[900:920], 12)
+
+    def test_missing_and_infinite_values_and_boundaries(self):
+        raw = pl.DataFrame({"x": [None, 1., np.nan, 3., np.inf, 5., None]})
+        result = despike_dataframe(raw, ["x"], verbose=True)
+        assert result["x"].to_list() == [None, 1., 2., 3., 4., 5., None]
+
+    @pytest.mark.parametrize("values", [[], [None] * 5, [2] * 8, [1, 2, 3]])
+    def test_degenerate_input(self, values):
+        raw = pl.DataFrame({"x": pl.Series(values, dtype=pl.Float64)})
+        assert despike_dataframe(raw, ["x"]).equals(raw)
+
+    def test_zero_passes_is_noop(self):
+        raw = pl.DataFrame({"x": [1., np.nan, 100., None]})
+        assert despike_dataframe(raw, ["x"], max_iter=0).equals(raw)
+
+    def test_multiple_passes_match_explicit_repetition(self):
+        raw = pl.DataFrame({"x": np.random.default_rng(7).normal(size=2000)})
+        once = despike_dataframe(raw, ["x"], prob_threshold=0.05)
+        twice = despike_dataframe(once, ["x"], prob_threshold=0.05)
+        result = despike_dataframe(raw, ["x"], prob_threshold=0.05, max_iter=2)
+        assert result.equals(twice)
+
+    @pytest.mark.parametrize("options", [
+        {"prob_threshold": 0}, {"prob_threshold": 1}, {"prob_threshold": np.nan},
+        {"max_iter": -1}, {"max_iter": 1.5}, {"bulk_iqr": 0}, {"bulk_iqr": np.inf},
+    ])
+    def test_invalid_options(self, options):
+        with pytest.raises(ValueError):
+            despike_dataframe(pl.DataFrame({"x": [1, 2, 3]}), ["x"], **options)
 
 
 def _reference_spike_detection(data, window_size=100, z_threshold=4.0):

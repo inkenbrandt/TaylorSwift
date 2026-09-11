@@ -8,12 +8,12 @@ intervals. Despiking is opt-in and runs before `process_file`.
 
 | Function | Backend | Iterates | Best for |
 | --- | --- | --- | --- |
-| `ukde_despike` | `scipy.stats.gaussian_kde`, $O(n^2)$ | Yes | Arrays up to ~10 000 samples |
-| `polars_ukde_despike` | `KDEpy.FFTKDE`, $O(n \log n)$ | No (single pass) | Full 30-min blocks at 20 Hz (~36 000 samples) |
-| `despike_dataframe` | FFT KDE per column | Yes | The usual entry point — many columns at once |
+| `ukde_despike` | `KDEpy.FFTKDE` | Yes | Arrays up to ~10 000 samples |
+| `polars_ukde_despike` | `KDEpy.FFTKDE`, $O(n \log n)$ | Optional; one pass by default | Full 30-min blocks at 20 Hz (~36 000 samples) |
+| `despike_dataframe` | `polars_ukde_despike` per column | Optional; one pass by default | The usual entry point — many columns at once |
 
-For a 30-minute block at 20 Hz, use the FFT-based paths. The $O(n^2)$ KDE is
-not practical at that length.
+Use `despike_dataframe` for either pandas or Polars input; the output retains
+the input frame type, row order, and unselected columns.
 
 ## The UKDE method
 
@@ -21,10 +21,10 @@ A sample is a spike when its kernel-density estimate falls below
 `prob_threshold` times the *peak* density of the distribution. Spikes become
 NaN, then are refilled by linear interpolation, and the next pass runs on the
 cleaner signal. Iteration stops when no new spikes appear or `max_iter` is hit
-— typically 2–4 passes.
+— the DataFrame functions default to just one pass to limit repeated trimming.
 
-This is distribution-based rather than derivative-based, so it does not
-mistake a steep but genuine ramp for a spike.
+This is distribution-based: rare genuine turbulence can also be flagged.
+Inspect changes and process long records in blocks with comparable conditions.
 
 !!! note "`prob_threshold` direction"
     Lower values are **more permissive** (fewer points removed); higher values
@@ -38,15 +38,26 @@ import TaylorSwift as tswift
 df_clean = tswift.despike_dataframe(
     df,
     columns=["Ux", "Uy", "Uz", "T_SONIC", "CO2_density", "H2O_density"],
-    prob_threshold=1e-4,
-    max_iter=10,
+    prob_threshold=1e-6,  # gentler than the library default of 1e-4
+    max_iter=1,
+    bulk_iqr=8.0,        # broader than the library default of 4.0
     verbose=True,
 )
 ```
 
-`verbose=True` reports how many spikes were replaced per column — worth
-watching the first time you tune a site. A column losing several percent of
-its samples usually means a hardware problem, not a tuning problem.
+`verbose=True` reports the count and percentage of changed finite samples,
+plus the number of missing/non-finite samples filled. Large replacement fractions
+can indicate overly aggressive settings, changing conditions, or instrument issues.
+Set `max_iter=0` to bypass cleaning. Internal gaps are interpolated; boundary gaps
+remain missing, without extrapolation.
+
+See `examples/despike_demo.ipynb` for per-column overrides, a Parquet row preview,
+block processing, plots, and a sensitivity comparison. To validate every row of
+the local Wellington dataset with bounded memory:
+
+```sh
+python tools/validate_despiking.py data/output/Wellington_filtered.parquet
+```
 
 ## Single array
 
@@ -68,12 +79,14 @@ from TaylorSwift.despike import polars_ukde_despike
 df = polars_ukde_despike(df, "Uz", prob_threshold=1e-4)
 ```
 
-The KDE is fitted on the bulk of the distribution — values within 4×IQR of the
-median — using an IQR-based Silverman bandwidth, so extreme outliers cannot
-distort the bandwidth or the density estimate. Samples outside the fitted grid
-get zero density and are always flagged.
+By default the KDE is fitted within 4×IQR of the median using an IQR-based
+Silverman bandwidth. Set `bulk_iqr=8.0` for a broader fit, or `bulk_iqr=None`
+to fit all finite observations. Samples outside the fitted grid get zero density
+and are flagged regardless of how low `prob_threshold` is. Fitting all values
+can preserve rare real populations but can also retain spikes.
 
-Single-pass, so it is faster but slightly less thorough than `ukde_despike`.
+`max_iter=1` is the default; larger values explicitly enable repeated passes.
+Fewer than four finite values or zero IQR skips spike detection.
 
 ## Other methods
 

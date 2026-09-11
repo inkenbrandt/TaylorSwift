@@ -288,201 +288,133 @@ def ukde_despike(series, prob_threshold=1e-4, max_iter=10):
     return data
 
 
+def _validate_kde_options(prob_threshold, max_iter, bulk_iqr):
+    if not np.isfinite(prob_threshold) or not 0 < prob_threshold < 1:
+        raise ValueError("prob_threshold must be between 0 and 1 (exclusive)")
+    if (isinstance(max_iter, bool)
+            or not isinstance(max_iter, (int, np.integer)) or max_iter < 0):
+        raise ValueError("max_iter must be a non-negative integer")
+    if bulk_iqr is not None and (not np.isfinite(bulk_iqr) or bulk_iqr <= 0):
+        raise ValueError("bulk_iqr must be positive and finite, or None")
+
+
 def polars_ukde_despike(
-    df: pl.DataFrame, col_name: str, prob_threshold: float = 1e-4
+    df: pl.DataFrame,
+    col_name: str,
+    prob_threshold: float = 1e-4,
+    max_iter: int = 1,
+    *,
+    bulk_iqr: float | None = 4.0,
 ) -> pl.DataFrame:
+    """Add ``{col_name}_cleaned`` using FFT-based UKDE despiking.
+
+    The default is one pass. Lower ``prob_threshold`` removes fewer samples;
+    increasing ``max_iter`` permits repeated trimming. Zero passes is a no-op.
+    ``bulk_iqr`` sets the KDE fitting range to median +/- this multiple of
+    IQR. Increase it to retain broader tails, or use None to fit all finite
+    values. Values outside the fitted KDE grid have zero density, so lowering
+    the probability threshold alone cannot protect them. The bandwidth uses
+    the IQR-based Silverman rule.
+
+    Input columns are preserved. Spikes and non-finite values become null and
+    internal gaps are linearly interpolated; leading/trailing gaps stay null
+    (no extrapolation). Fewer than four finite values or zero IQR skips spike
+    detection. Missing values are still interpolated unless max_iter is zero.
+    Numeric integer columns produce floating-point cleaned values.
     """
-    Despike a single column of a Polars DataFrame using an FFT-based KDE.
+    _validate_kde_options(prob_threshold, max_iter, bulk_iqr)
+    if not df.schema[col_name].is_numeric():
+        raise TypeError(f"Column {col_name!r} must be numeric")
+    output_col = f"{col_name}_cleaned"
+    if max_iter == 0:
+        return df.with_columns(pl.col(col_name).alias(output_col))
+    values = df[col_name].cast(pl.Float64)
+    values = values.set(~values.is_finite().fill_null(False), None)
 
-    A performance-optimised variant of :func:`ukde_despike` designed for
-    large high-frequency datasets.  Uses ``KDEpy.FFTKDE`` (O(n log n))
-    instead of ``scipy.stats.gaussian_kde`` (O(n²)), so it is practical on
-    full 30-minute blocks at 20 Hz (≈ 36 000 samples per column).
-
-    The KDE is fitted on the *bulk* of the distribution (values within
-    4 × IQR of the median) using an IQR-based Silverman bandwidth, so that
-    extreme outliers cannot distort either the bandwidth or the density
-    estimate.  Samples outside the fitted grid receive a density of zero
-    and are therefore always flagged regardless of threshold.
-
-    Because only a single KDE pass is performed (no iteration), this
-    function is faster but slightly less thorough than the iterative
-    :func:`ukde_despike`.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input Polars DataFrame containing the column to clean.
-    col_name : str
-        Name of the column to despike.  The column must be numeric.
-    prob_threshold : float, optional
-        Fraction of the peak density below which a sample is flagged as a
-        spike.  Default is ``1e-4``.
-
-    Returns
-    -------
-    pl.DataFrame
-        A new DataFrame identical to *df* except that a column named
-        ``{col_name}_cleaned`` is added (or replaced if it already exists).
-        Flagged samples are set to ``null`` and then filled by Polars'
-        built-in linear interpolation.
-
-    Notes
-    -----
-    Original NaN values in *col_name* are assigned a density of zero, so
-    they are also replaced by interpolated values in the output column.
-
-    See Also
-    --------
-    ukde_despike : Iterative scipy-based version for smaller arrays.
-    despike_dataframe : Apply despiking to multiple columns of a pandas
-        DataFrame in one call.
-
-    References
-    ----------
-    Metzger, S., Junkermann, W., Mauder, M., Beyrich, F., Butterbach-Bahl, K.,
-        Schmid, H. P., & Foken, T. (2012). Eddy-covariance flux measurements
-        with a weight-shift microlight aircraft. Atmospheric Measurement
-        Techniques, 5, 1699–1717. https://doi.org/10.5194/amt-5-1699-2012
-    Silverman, B. W. (1986). Density Estimation for Statistics and Data
-        Analysis. Chapman & Hall, London.
-    """
-    # 1. Extract numpy array (Polars zero-copy where possible)
-    series_np = df[col_name].to_numpy()
-    clean_mask = ~np.isnan(series_np)
-    clean_data = series_np[clean_mask]
-
-    if len(clean_data) < 4:
-        return df.with_columns(pl.col(col_name).alias(f"{col_name}_cleaned"))
-
-    # 2. Robust bandwidth: IQR-based Silverman rule (outlier-resistant)
-    med = np.median(clean_data)
-    q25, q75 = np.percentile(clean_data, [25, 75])
-    iqr = q75 - q25
-    if iqr <= 0:
-        return df.with_columns(pl.col(col_name).alias(f"{col_name}_cleaned"))
-    sigma_robust = iqr / 1.349
-    bw = 0.9 * sigma_robust * len(clean_data) ** (-0.2)
-
-    # 3. Fit FFT-KDE on bulk data only (exclude > 4 IQR from median)
-    #    Spikes excluded from the fit cannot inflate the bandwidth or
-    #    smuggle themselves into the tail of the estimated density.
-    bulk_mask = (clean_data >= med - 4.0 * iqr) & (clean_data <= med + 4.0 * iqr)
-    bulk = clean_data[bulk_mask]
-    if len(bulk) < 4:
-        return df.with_columns(pl.col(col_name).alias(f"{col_name}_cleaned"))
-
-    x_grid, y_grid = FFTKDE(kernel="gaussian", bw=bw).fit(bulk).evaluate(2**12)
-    peak = y_grid.max()
-
-    # 4. Evaluate density at every sample; values outside the KDE grid get 0
-    f_density = interp1d(
-        x_grid, y_grid, kind="linear", fill_value=0.0, bounds_error=False
-    )
-    densities = f_density(series_np)
-
-    # 5. Polars masking and linear interpolation — fast even on 10⁶-row frames
-    return df.with_columns(
-        pl.when(pl.lit(densities) < (prob_threshold * peak))
-        .then(None)  # mark spike as null
-        .otherwise(pl.col(col_name))
-        .alias(f"{col_name}_cleaned")
-    ).with_columns(
-        pl.col(f"{col_name}_cleaned").interpolate()  # fill gaps linearly
-    )
+    for _ in range(max_iter):
+        data = values.to_numpy()
+        finite = np.isfinite(data)
+        clean_data = data[finite]
+        spikes = np.zeros(len(data), dtype=bool)
+        if len(clean_data) >= 4:
+            med = np.median(clean_data)
+            q25, q75 = np.percentile(clean_data, [25, 75])
+            iqr = q75 - q25
+            if iqr > 0:
+                bw = 0.9 * (iqr / 1.349) * len(clean_data) ** (-0.2)
+                bulk = clean_data if bulk_iqr is None else clean_data[
+                    np.abs(clean_data - med) <= bulk_iqr * iqr
+                ]
+                if len(bulk) >= 4:
+                    x_grid, y_grid = FFTKDE(kernel="gaussian", bw=bw).fit(
+                        bulk
+                    ).evaluate(2**12)
+                    peak = y_grid.max()
+                    if peak > 0:
+                        densities = np.interp(
+                            clean_data, x_grid, y_grid, left=0.0, right=0.0
+                        )
+                        spikes[finite] = densities < prob_threshold * peak
+        values = values.set(pl.Series(spikes), None).interpolate()
+        if not spikes.any():
+            break
+    return df.with_columns(values.alias(output_col))
 
 
 def despike_dataframe(
-    df: pd.DataFrame,
+    df: pd.DataFrame | pl.DataFrame,
     columns: list,
     prob_threshold: float = 1e-4,
-    max_iter: int = 10,
+    max_iter: int = 1,
     verbose: bool = False,
-) -> pd.DataFrame:
+    *,
+    bulk_iqr: float | None = 4.0,
+) -> pd.DataFrame | pl.DataFrame:
+    """Apply :func:`polars_ukde_despike` to selected columns of a copy.
+
+    Accepts pandas or Polars and returns the same frame type, retaining row
+    order, pandas index, and unselected columns. Missing column names are
+    skipped. Only selected numeric columns are converted to Polars; no helper
+    columns are added to the returned frame.
+
+    ``prob_threshold``, ``max_iter`` (default one pass), and ``bulk_iqr`` are
+    passed to :func:`polars_ukde_despike`. For gentler filtering, lower the
+    probability threshold and increase bulk_iqr (or set it to None). Use
+    max_iter=0 to bypass cleaning. Internal gaps are interpolated, while
+    boundary gaps remain missing. With verbose=True, report changed finite
+    samples separately from filled missing/non-finite samples.
     """
-    Apply iterative UKDE despiking to multiple columns of a pandas DataFrame.
-
-    Loops over *columns*, calling :func:`ukde_despike` on each in turn and
-    storing the cleaned values back into a copy of *df*.  Columns that are
-    absent from *df* are silently skipped so that a fixed default column list
-    can be used across different instrument setups.
-
-    This function is the recommended entry-point for the ``run_cospectra.py``
-    workflow, where despiking is applied to the raw high-frequency time series
-    before FFT-based spectral computation.
-
-    Parameters
-    ----------
-    df : pl.DataFrame or pd.DataFrame
-        Raw high-frequency eddy covariance DataFrame (e.g. as returned by
-        :func:`eccospectra.io.read_toa5`).  The DataFrame is not modified
-        in-place; a copy / clone is returned with the same type as the input.
-    columns : list of str
-        Column names to despike.  Typical choices for an IRGASON dataset are
-        ``['Ux', 'Uy', 'Uz', 'Ts', 'CO2', 'H2O']``.  Missing column names
-        are skipped without raising an error.
-    prob_threshold : float, optional
-        Passed directly to :func:`ukde_despike`.  Default is ``1e-4``.
-    max_iter : int, optional
-        Maximum iterations per column passed to :func:`ukde_despike`.
-        Default is ``10``.
-    verbose : bool, optional
-        If ``True``, print a one-line summary per column showing how many
-        samples changed.  Default is ``False``.
-
-    Returns
-    -------
-    pd.DataFrame
-        A copy of *df* with spike-contaminated samples in *columns* replaced
-        by linearly interpolated values.
-
-    See Also
-    --------
-    ukde_despike : Underlying single-column despiking implementation.
-    polars_ukde_despike : FFT-based variant for Polars DataFrames.
-
-    Examples
-    --------
-    >>> from eccospectra.io import read_toa5
-    >>> from eccospectra.corrections import despike_dataframe
-    >>> df, meta = read_toa5('mydata.dat')
-    >>> df_clean = despike_dataframe(
-    ...     df,
-    ...     columns=['Ux', 'Uy', 'Uz', 'Ts', 'CO2', 'H2O'],
-    ...     prob_threshold=1e-4,
-    ...     verbose=True,
-    ... )
-    """
-    _is_polars = isinstance(df, pl.DataFrame)
-    df_out = df.clone() if _is_polars else df.copy()
+    _validate_kde_options(prob_threshold, max_iter, bulk_iqr)
+    if not isinstance(df, (pd.DataFrame, pl.DataFrame)):
+        raise TypeError("df must be a pandas or Polars DataFrame")
+    is_polars = isinstance(df, pl.DataFrame)
+    df_out = df.clone() if isinstance(df, pl.DataFrame) else df.copy()
+    if max_iter == 0:
+        return df_out
 
     for col in columns:
         if col not in df_out.columns:
             continue
-
-        # Extract as float64 NumPy array (zero-copy when possible)
-        original = df_out[col].to_numpy().astype(np.float64)
-
-        cleaned = ukde_despike(
-            original, prob_threshold=prob_threshold, max_iter=max_iter
-        )
-
+        column = df_out.select(col) if is_polars else pl.from_pandas(df_out[[col]])
+        cleaned = polars_ukde_despike(
+            column, col, prob_threshold=prob_threshold, max_iter=max_iter,
+            bulk_iqr=bulk_iqr,
+        )[f"{col}_cleaned"]
         if verbose:
-            scale = np.nanstd(original)
-            tol = 1e-6 * scale if scale > 0 else 1e-10
-            n_changed = int(
-                np.sum(
-                    np.abs(cleaned - np.where(np.isnan(original), cleaned, original))
-                    > tol
-                )
+            original = column[col].cast(pl.Float64).to_numpy()
+            result = cleaned.to_numpy()
+            finite = np.isfinite(original)
+            changed = finite & (~np.isfinite(result) | (original != result))
+            filled = ~finite & np.isfinite(result)
+            print(
+                f"        despike {col:>10s}: {changed.sum():5d} samples replaced"
+                f" ({100 * changed.sum() / max(1, finite.sum()):.3f}%);"
+                f" {filled.sum()} missing/non-finite samples filled"
             )
-            print(f"        despike {col:>10s}: {n_changed:5d} samples replaced")
-
-        if _is_polars:
-            df_out = df_out.with_columns(pl.Series(col, cleaned))
+        if is_polars:
+            df_out = df_out.with_columns(cleaned.alias(col))
         else:
-            df_out[col] = cleaned
-
+            df_out[col] = cleaned.to_numpy()
     return df_out
 
 
